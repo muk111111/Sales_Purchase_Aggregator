@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 
 const navGroups = [
-  { label: 'Overview', items: [{ label: 'Dashboard', icon: LayoutDashboard }] },
+  { label: 'Overview', items: [{ label: 'Dashboards', icon: LayoutDashboard }] },
   { label: 'CRM', items: [{ label: 'Leads', icon: Users }] },
   {
     label: 'Buy',
@@ -99,7 +99,7 @@ export default function Page() {
               <div className="flex flex-col gap-1">
                 {group.items.map((item) => {
                   const Icon = item.icon
-                  const active = item.label === 'Dashboard'
+                  const active = item.label === 'Dashboards'
                   return <button key={item.label} className={`flex min-h-10 items-center gap-3 rounded-lg px-3 text-left text-[13px] transition-colors ${active ? 'bg-[#f2a541] font-semibold text-[#0e1b2c]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon size={16} /><span className="flex-1">{item.label}</span>{item.badge && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? 'bg-[#0e1b2c] text-[#f2a541]' : 'bg-[#b23a22] text-white'}`}>{item.badge}</span>}</button>
                 })}
               </div>
@@ -117,7 +117,7 @@ export default function Page() {
 
       <div className="lg:pl-[252px]">
         <header className="sticky top-0 z-30 flex min-h-[76px] items-center justify-between border-b border-[#dedbd2] bg-[#f4f2ed]/95 px-5 backdrop-blur-md sm:px-8">
-          <div className="flex items-center gap-3"><button aria-label="Open navigation" className="rounded-lg p-2 hover:bg-white lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div><h1 className="font-heading text-[25px] font-bold tracking-[-0.035em]">Good morning, Mukul</h1><p className="mt-0.5 text-xs text-[#667078]">Here&apos;s what&apos;s happening across your trading desk.</p></div></div>
+          <div className="flex items-center gap-3"><button aria-label="Open navigation" className="rounded-lg p-2 hover:bg-white lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div><h1 className="font-heading text-[25px] font-bold tracking-[-0.035em]">Dashboards</h1></div></div>
           <div className="flex items-center gap-2 sm:gap-3"><div className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] sm:flex ${connected ? 'border-[#b7d6c5] bg-[#eaf5ee] text-[#23714a]' : 'border-[#e8c2b9] bg-[#fff1ed] text-[#b23a22]'}`}><span className={`size-1.5 rounded-full ${connected ? 'bg-[#23714a]' : 'bg-[#b23a22]'}`} />{connected ? 'Supabase connected' : 'Supabase needs setup'}</div><button aria-label="Search" className="rounded-lg border border-[#dedbd2] bg-white p-2.5 text-[#52606a] hover:border-[#b8b3a8]"><Search size={17} /></button><button aria-label="Notifications" className="relative rounded-lg border border-[#dedbd2] bg-white p-2.5 text-[#52606a] hover:border-[#b8b3a8]"><Bell size={17} /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-[#b23a22]" /></button><button className="hidden items-center gap-2 rounded-lg bg-[#0e1b2c] px-3 py-2.5 text-xs font-semibold text-white hover:bg-[#1a2b42] sm:flex"><Plus size={15} /> New sale</button></div>
         </header>
 
