@@ -28,6 +28,22 @@ export default function Page() {
   const [showForm, setShowForm] = useState(false)
   const [editingLead, setEditingLead] = useState<Lead | null>(null)
   const [error, setError] = useState('')
+  const [authChecking, setAuthChecking] = useState(true)
+  const [employeeName, setEmployeeName] = useState('Employee')
+
+  useEffect(() => {
+    let active = true
+    const checkEmployee = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { window.location.replace('/login'); return }
+      const { data: employee } = await supabase.from('employees').select('full_name,is_active').eq('id', session.user.id).maybeSingle()
+      if (!employee?.is_active) { await supabase.auth.signOut(); window.location.replace('/login'); return }
+      if (active) { setEmployeeName(employee.full_name); setAuthChecking(false) }
+    }
+    checkEmployee()
+    return () => { active = false }
+  }, [])
 
   const loadLeads = async () => {
     setLoading(true)
@@ -49,11 +65,13 @@ export default function Page() {
   }
 
   const openEditor = (lead: Lead) => { setEditingLead(lead); setShowForm(true) }
+  if (authChecking) return <main className="flex min-h-screen items-center justify-center bg-[#f4f2ed] text-sm text-[#667078]">Checking employee access…</main>
+
   return <div className="min-h-screen bg-[#f4f2ed] text-[#0e1b2c]">
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[252px] flex-col bg-[#0e1b2c] px-5 py-6 text-white transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="flex items-center justify-between px-2"><div><div className="font-heading text-[25px] font-bold tracking-[-0.04em]">Supply<span className="text-[#f2a541]">360</span></div><div className="mt-0.5 text-[11px] uppercase tracking-[0.22em] text-white/45">Trading desk</div></div><button aria-label="Close navigation" className="rounded-lg p-2 text-white/50 lg:hidden" onClick={() => setSidebarOpen(false)}><X /></button></div>
       <div className="mt-8 flex-1 overflow-y-auto">{navGroups.map(group => <div key={group.label} className="mb-6"><div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">{group.label}</div><div className="flex flex-col gap-1">{group.items.map(item => { const Icon = item.icon; const active = item.label === section; return <button key={item.label} onClick={() => { if (item.label === 'Leads' || item.label === 'Dashboards') setSection(item.label as 'Leads' | 'Dashboards'); setSidebarOpen(false) }} className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] ${active ? 'bg-[#f2a541] font-semibold text-[#0e1b2c]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon size={16} /><span>{item.label}</span></button> })}</div></div>)}</div>
-      <div className="border-t border-white/10 pt-4"><div className="flex items-center gap-3 rounded-xl bg-white/[0.06] p-3"><div className="flex size-9 items-center justify-center rounded-full bg-[#f2a541] text-sm font-bold text-[#0e1b2c]">MV</div><div><div className="text-sm font-semibold">Mukul Verma</div><div className="text-xs text-white/45">Owner</div></div><Settings2 size={15} className="ml-auto text-white/40" /></div></div>
+      <div className="border-t border-white/10 pt-4"><div className="flex items-center gap-3 rounded-xl bg-white/[0.06] p-3"><div className="flex size-9 items-center justify-center rounded-full bg-[#f2a541] text-sm font-bold text-[#0e1b2c]">MV</div><div><div className="text-sm font-semibold">{employeeName}</div><div className="text-xs text-white/45">Employee</div></div><button aria-label="Sign out" onClick={async () => { await createClient().auth.signOut(); window.location.replace('/login') }} className="ml-auto rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"><Settings2 size={15} /></button></div></div>
     </aside>
     <div className="lg:pl-[252px]"><header className="sticky top-0 z-30 flex min-h-[76px] items-center justify-between border-b border-[#dedbd2] bg-[#f4f2ed]/95 px-5 backdrop-blur-md sm:px-8"><div className="flex items-center gap-3"><button aria-label="Open navigation" className="rounded-lg p-2 lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div><h1 className="font-heading text-[25px] font-bold tracking-[-0.035em]">{section}</h1><p className="mt-1 hidden text-xs text-[#8b9295] sm:block">{section === 'Leads' ? 'Manage, filter, and update every enquiry.' : 'Trading performance at a glance.'}</p></div></div><div className="flex items-center gap-2"><div className="hidden rounded-full border border-[#b7d6c5] bg-[#eaf5ee] px-2.5 py-1.5 text-[11px] text-[#23714a] sm:block">Supabase connected</div><button aria-label="Search" className="rounded-lg border border-[#dedbd2] bg-white p-2.5"><Search size={17} /></button><button aria-label="Notifications" className="rounded-lg border border-[#dedbd2] bg-white p-2.5"><Bell size={17} /></button></div></header>
       <main className="mx-auto max-w-[1450px] px-5 py-7 sm:px-8 lg:px-10">{section === 'Leads' ? <LeadsView leads={leads} loading={loading} error={error} onNew={() => { setEditingLead(null); setShowForm(true) }} onEdit={openEditor} /> : <DashboardView />}</main></div>
