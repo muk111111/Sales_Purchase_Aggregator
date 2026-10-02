@@ -41,6 +41,7 @@ export default function Page() {
   const [showEmployeeForm, setShowEmployeeForm] = useState(false)
   const [editingLead, setEditingLead] = useState<Lead | null>(null)
   const [error, setError] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
   const [authChecking, setAuthChecking] = useState(true)
   const [employeeName, setEmployeeName] = useState('Employee')
   const [employeeRole, setEmployeeRole] = useState<Employee['role']>('Employee')
@@ -69,11 +70,11 @@ export default function Page() {
   useEffect(() => { if (section === 'Customer Master') loadCustomers() }, [section])
 
   const saveCustomer = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setError('')
+    event.preventDefault(); setError(''); setSaveMessage('')
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
     const { error: saveError } = await createClient().from('customers').insert({ customer_name: values.customer_name, gstin: values.gstin || null, contact_person: values.contact_person || null, phone: values.phone || null, city_state: values.city_state || null, credit_days: Number(values.credit_days || 0), status: values.status })
     if (saveError) { setError(`Could not save customer: ${saveError.message}`); return }
-    setShowCustomerForm(false); await loadCustomers()
+    setShowCustomerForm(false); setSaveMessage('Customer saved successfully.'); await loadCustomers()
   }
 
   const loadLeads = async () => {
@@ -104,13 +105,14 @@ export default function Page() {
   }
 
   const createEmployee = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setError('')
+    event.preventDefault(); setError(''); setSaveMessage('')
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
     const session = (await createClient().auth.getSession()).data.session
     const response = await fetch('/api/employees', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` }, body: JSON.stringify({ full_name: values.full_name, email: values.email, password: values.password, role: values.role }) })
     const result = await response.json()
     if (!response.ok) { setError(result.error || 'Could not create employee.'); return }
     setShowEmployeeForm(false)
+    setSaveMessage('Employee saved successfully.')
     await loadEmployees()
   }
   const loadPermissions = async () => {
@@ -120,7 +122,7 @@ export default function Page() {
   const updatePermission = async (role: string, module: string, allowed: boolean) => {
     const { error: permissionError } = await createClient().rpc('set_role_module_permission', { target_role: role, target_module: module, allowed })
     if (permissionError) setError(permissionError.message)
-    else setPermissions(current => current.map(item => item.role === role && item.module === module ? { ...item, can_view: allowed } : item))
+    else { setPermissions(current => current.map(item => item.role === role && item.module === module ? { ...item, can_view: allowed } : item)); setSaveMessage(`${role} access updated for ${module}.`) }
   }
   useEffect(() => { if (section === 'Employees') loadEmployees(); if (section === 'Role & Module Access') { loadPermissions(); if (!employeeRoles.length) loadEmployees() } }, [section])
 
@@ -135,7 +137,7 @@ export default function Page() {
     if (saveError || !savedLead) { setError(`Could not save lead: ${saveError?.message || 'Unknown error'}`); return }
     const files = (new FormData(event.currentTarget).getAll('attachments') as File[]).filter(file => file.size > 0)
     for (const file of files) { const uploadData = new FormData(); uploadData.append('file', file); uploadData.append('lead_id', savedLead.id); const response = await fetch('/api/leads/attachments', { method: 'POST', headers: { Authorization: `Bearer ${session?.access_token || ''}` }, body: uploadData }); if (!response.ok) { setError('Lead saved, but one or more attachments could not be uploaded.'); break } }
-    setShowForm(false); setEditingLead(null); await loadLeads()
+    setShowForm(false); setEditingLead(null); setSaveMessage(editingLead ? 'Lead updated successfully.' : 'Lead saved successfully.'); await loadLeads()
   }
 
   const openEditor = (lead: Lead) => { setEditingLead(lead); setShowForm(true) }
@@ -152,7 +154,7 @@ export default function Page() {
       <div className="border-t border-white/10 pt-4"><div className="flex items-center gap-3 rounded-xl bg-white/[0.06] p-3"><div className="flex size-9 items-center justify-center rounded-full bg-[#f2a541] text-sm font-bold text-[#0e1b2c]">MV</div><div><div className="text-sm font-semibold">{employeeName}</div><div className="text-xs text-white/45">{employeeRole}</div></div><button aria-label="Sign out" onClick={async () => { await createClient().auth.signOut(); window.location.replace('/login') }} className="ml-auto rounded-lg p-1.5 text-[#e56b5d] hover:bg-[#b23a22]/20 hover:text-[#ff9a8d]"><LogOut size={15} /></button></div></div>
     </aside>
     <div className="lg:pl-[252px]"><header className="sticky top-0 z-30 flex min-h-[76px] items-center justify-between border-b border-[#dedbd2] bg-[#f4f2ed]/95 px-5 backdrop-blur-md sm:px-8"><div className="flex items-center gap-3"><button aria-label="Open navigation" className="rounded-lg p-2 lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div><h1 className="font-heading text-[25px] font-bold tracking-[-0.035em]">{section}</h1><p className="mt-1 hidden text-xs text-[#8b9295] sm:block">{section === 'Leads' ? 'Manage, filter, and update every enquiry.' : 'Trading performance at a glance.'}</p></div></div><div className="flex items-center gap-2"><div className="hidden rounded-full border border-[#b7d6c5] bg-[#eaf5ee] px-2.5 py-1.5 text-[11px] text-[#23714a] sm:block">Supabase connected</div><button aria-label="Search" className="rounded-lg border border-[#dedbd2] bg-white p-2.5"><Search size={17} /></button><button aria-label="Notifications" className="rounded-lg border border-[#dedbd2] bg-white p-2.5"><Bell size={17} /></button></div></header>
-      <main className="mx-auto max-w-[1450px] px-5 py-7 sm:px-8 lg:px-10">{section === 'Customer Master' ? <CustomersView customers={customers} loading={loading} error={error} onRefresh={loadCustomers} onNew={() => { setError(''); setShowCustomerForm(true) }} /> : section === 'Leads' ? <LeadsView leads={leads} loading={loading} error={error} onNew={() => { setEditingLead(null); setShowForm(true) }} onEdit={openEditor} /> : section === 'Employees' ? <EmployeesView employees={employees} loading={loading} error={error} onRefresh={loadEmployees} canCreate={employeeRole === 'Admin'} onNew={() => { setError(''); setShowEmployeeForm(true) }} /> : section === 'Role & Module Access' ? <RoleModuleAccessView roles={employeeRoles} permissions={permissions} error={error} onToggle={updatePermission} /> : <DashboardView />}</main></div>
+      <main className="mx-auto max-w-[1450px] px-5 py-7 sm:px-8 lg:px-10">{saveMessage && <div role="status" className="mb-5 flex items-center justify-between rounded-xl border border-[#b7d6c5] bg-[#eaf5ee] px-4 py-3 text-sm font-semibold text-[#23714a]"><span>{saveMessage}</span><button type="button" aria-label="Dismiss confirmation" onClick={() => setSaveMessage('')} className="ml-4 text-[#23714a]">×</button></div>}{section === 'Customer Master' ? <CustomersView customers={customers} loading={loading} error={error} onRefresh={loadCustomers} onNew={() => { setError(''); setShowCustomerForm(true) }} /> : section === 'Leads' ? <LeadsView leads={leads} loading={loading} error={error} onNew={() => { setEditingLead(null); setShowForm(true) }} onEdit={openEditor} /> : section === 'Employees' ? <EmployeesView employees={employees} loading={loading} error={error} onRefresh={loadEmployees} canCreate={employeeRole === 'Admin'} onNew={() => { setError(''); setShowEmployeeForm(true) }} /> : section === 'Role & Module Access' ? <RoleModuleAccessView roles={employeeRoles} permissions={permissions} error={error} onToggle={updatePermission} /> : <DashboardView />}</main></div>
     {sidebarOpen && <button aria-label="Close navigation overlay" className="fixed inset-0 z-30 bg-[#0e1b2c]/40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
     {showCustomerForm && <CustomerForm onClose={() => setShowCustomerForm(false)} onSubmit={saveCustomer} />}
     {showForm && <LeadForm lead={editingLead} customers={customers} employees={employees} onClose={() => { setShowForm(false); setEditingLead(null) }} onSubmit={saveLead} />}
