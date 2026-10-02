@@ -128,14 +128,15 @@ export default function Page() {
 
   const saveLead = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setError('')
-    const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    const formData = new FormData(event.currentTarget)
+    const values = Object.fromEntries(formData.entries())
+    const files = (formData.getAll('attachments') as File[]).filter(file => file.size > 0)
     const selectedCustomer = customers.find(customer => customer.id === values.customer_id)
     const session = (await createClient().auth.getSession()).data.session
     const payload = { customer_id: values.customer_id, customer_name: selectedCustomer?.customer_name || '', owner_id: editingLead?.owner_id || session?.user.id, working_person_id: values.working_person_id || null, contact_person: values.contact_person || null, phone: values.phone || null, email: values.email || null, source: values.source, product: values.product, qty: Number(values.qty || 0), uom: values.uom, business_type: values.business_type, stage: values.stage, partner_name: values.partner_name || null, target_rate: Number(values.target_rate || 0), buy_rate: Number(values.buy_rate || 0), expected_vendor: values.expected_vendor || null, next_follow_up: values.next_follow_up || null, notes: values.notes || null }
     const supabase = createClient()
     const { data: savedLead, error: saveError } = editingLead ? await supabase.from('leads').update(payload).eq('id', editingLead.id).select('id').single() : await supabase.from('leads').insert(payload).select('id').single()
     if (saveError || !savedLead) { setError(`Could not save lead: ${saveError?.message || 'Unknown error'}`); return }
-    const files = (new FormData(event.currentTarget).getAll('attachments') as File[]).filter(file => file.size > 0)
     for (const file of files) { const uploadData = new FormData(); uploadData.append('file', file); uploadData.append('lead_id', savedLead.id); const response = await fetch('/api/leads/attachments', { method: 'POST', headers: { Authorization: `Bearer ${session?.access_token || ''}` }, body: uploadData }); if (!response.ok) { setError('Lead saved, but one or more attachments could not be uploaded.'); break } }
     setShowForm(false); setEditingLead(null); setSaveMessage(editingLead ? 'Lead updated successfully.' : 'Lead saved successfully.'); await loadLeads()
   }
