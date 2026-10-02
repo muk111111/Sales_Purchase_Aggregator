@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bell,
   Boxes,
+  Building2,
   ChevronDown,
   CircleDollarSign,
   FileText,
@@ -49,6 +50,14 @@ const navGroups = [
   {
     label: 'Master',
     items: [
+      {
+        label: 'Business Entity',
+        icon: Building2,
+        children: [
+          { label: 'Companies', icon: Building2 },
+          { label: 'Employees', icon: Users },
+        ],
+      },
       { label: 'Vendor Master', icon: Truck },
       { label: 'Customer Master', icon: Users },
       { label: 'SKU Master', icon: Boxes },
@@ -103,7 +112,10 @@ export default function Page() {
                 {group.items.map((item) => {
                   const Icon = item.icon
                   const active = item.label === 'Dashboards'
-                  return <button key={item.label} className={`flex min-h-10 items-center gap-3 rounded-lg px-3 text-left text-[13px] transition-colors ${active ? 'bg-[#f2a541] font-semibold text-[#0e1b2c]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon size={16} /><span className="flex-1">{item.label}</span>{item.badge && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? 'bg-[#0e1b2c] text-[#f2a541]' : 'bg-[#b23a22] text-white'}`}>{item.badge}</span>}</button>
+                  return <div key={item.label}>
+                    <button className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] transition-colors ${active ? 'bg-[#f2a541] font-semibold text-[#0e1b2c]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon size={16} /><span className="flex-1">{item.label}</span>{item.badge && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? 'bg-[#0e1b2c] text-[#f2a541]' : 'bg-[#b23a22] text-white'}`}>{item.badge}</span>}</button>
+                    {item.children && <div className="ml-4 mt-1 flex flex-col gap-1 border-l border-white/10 pl-3">{item.children.map((child) => { const ChildIcon = child.icon; return <button key={child.label} className="flex min-h-9 items-center gap-3 rounded-lg px-3 text-left text-[12px] text-white/55 transition-colors hover:bg-white/10 hover:text-white"><ChildIcon size={14} /><span>{child.label}</span></button> })}</div>}
+                  </div>
                 })}
               </div>
             </div>
