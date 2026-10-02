@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Bell, Boxes, CircleDollarSign, FileText, LayoutDashboard, LogOut, Menu, Search, Truck, Users, WalletCards, X, Pencil, Plus } from 'lucide-react'
+import { Bell, Boxes, CircleDollarSign, FileText, LayoutDashboard, LogOut, Menu, Search, ShieldCheck, Truck, Users, WalletCards, X, Pencil, Plus } from 'lucide-react'
 
 type Lead = {
   id: string; customer_name: string; contact_person: string | null; phone: string | null; email: string | null; source: string; product: string; qty: number; uom: string; business_type: string; stage: string; partner_name: string | null; target_rate: number; buy_rate: number; expected_vendor: string | null; expected_close_date: string | null; next_follow_up: string | null; notes: string | null; created_at: string
@@ -12,6 +12,8 @@ type Employee = {
   id: string; full_name: string; email: string; role: string; is_active: boolean; created_at: string
 }
 
+type RolePermission = { role: string; module: string; can_view: boolean }
+
 const stages = ['New', 'Contacted', 'Quote Sent', 'Negotiation', 'Won', 'Lost']
 const navGroups = [
   { label: 'Overview', items: [{ label: 'Dashboards', icon: LayoutDashboard }] },
@@ -20,16 +22,17 @@ const navGroups = [
   { label: 'Sell', items: [{ label: 'Sales & Invoices', icon: FileText }] },
   { label: 'Money', items: [{ label: 'Commissions & Cuts', icon: CircleDollarSign }, { label: 'Stock & Expenses', icon: WalletCards }] },
   { label: 'Master', items: [{ label: 'Vendor Master', icon: Truck }, { label: 'Customer Master', icon: Users }, { label: 'SKU Master', icon: Boxes }] },
-  { label: 'Business Entity', items: [{ label: 'Companies', icon: Users }, { label: 'Employees', icon: Users }] },
+  { label: 'Business Entity', items: [{ label: 'Companies', icon: Users }, { label: 'Employees', icon: Users }, { label: 'Role & Module Access', icon: ShieldCheck }] },
 ]
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
 
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [section, setSection] = useState<'Dashboards' | 'Leads' | 'Employees'>('Dashboards')
+  const [section, setSection] = useState<'Dashboards' | 'Leads' | 'Employees' | 'Role & Module Access'>('Dashboards')
   const [leads, setLeads] = useState<Lead[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [employeeRoles, setEmployeeRoles] = useState<string[]>([])
+  const [permissions, setPermissions] = useState<RolePermission[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [showEmployeeForm, setShowEmployeeForm] = useState(false)
@@ -47,7 +50,7 @@ export default function Page() {
       if (!session) { window.location.replace('/login'); return }
       const { data: employee } = await supabase.from('employees').select('full_name,role,is_active').eq('id', session.user.id).maybeSingle()
       if (!employee?.is_active) { await supabase.auth.signOut(); window.location.replace('/login'); return }
-      if (active) { setEmployeeName(employee.full_name); setEmployeeRole(employee.role as Employee['role']); setAuthChecking(false) }
+      if (active) { setEmployeeName(employee.full_name); setEmployeeRole(employee.role as Employee['role']); const [{ data: roleData }, { data: permissionData }] = await Promise.all([supabase.rpc('list_employee_roles'), supabase.rpc('list_role_module_permissions')]); setEmployeeRoles((roleData ?? []).map((item: { role: string }) => item.role)); setPermissions((permissionData ?? []) as RolePermission[]); setAuthChecking(false) }
     }
     checkEmployee()
     return () => { active = false }
@@ -86,7 +89,16 @@ export default function Page() {
     setShowEmployeeForm(false)
     await loadEmployees()
   }
-  useEffect(() => { if (section === 'Employees') loadEmployees() }, [section])
+  const loadPermissions = async () => {
+    const { data } = await createClient().rpc('list_role_module_permissions')
+    setPermissions((data ?? []) as RolePermission[])
+  }
+  const updatePermission = async (role: string, module: string, allowed: boolean) => {
+    const { error: permissionError } = await createClient().rpc('set_role_module_permission', { target_role: role, target_module: module, allowed })
+    if (permissionError) setError(permissionError.message)
+    else setPermissions(current => current.map(item => item.role === role && item.module === module ? { ...item, can_view: allowed } : item))
+  }
+  useEffect(() => { if (section === 'Employees') loadEmployees(); if (section === 'Role & Module Access') { loadPermissions(); if (!employeeRoles.length) loadEmployees() } }, [section])
 
   const saveLead = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setError('')
@@ -104,11 +116,11 @@ export default function Page() {
   return <div className="min-h-screen bg-[#f4f2ed] text-[#0e1b2c]">
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[252px] flex-col bg-[#0e1b2c] px-5 py-6 text-white transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="flex items-center justify-between px-2"><div><div className="font-heading text-[25px] font-bold tracking-[-0.04em]">Supply<span className="text-[#f2a541]">360</span></div><div className="mt-0.5 text-[11px] uppercase tracking-[0.22em] text-white/45">Trading desk</div></div><button aria-label="Close navigation" className="rounded-lg p-2 text-white/50 lg:hidden" onClick={() => setSidebarOpen(false)}><X /></button></div>
-      <div className="mt-8 flex-1 overflow-y-auto">{navGroups.map(group => { const visibleItems = group.items.filter(item => item.label !== 'Employees' || employeeRole === 'Admin' || employeeRole === 'Director'); if (!visibleItems.length) return null; return <div key={group.label} className="mb-6"><div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">{group.label}</div><div className="flex flex-col gap-1">{visibleItems.map(item => { const Icon = item.icon; const active = item.label === section; return <button key={item.label} onClick={() => { if (item.label === 'Leads' || item.label === 'Dashboards' || item.label === 'Employees') setSection(item.label as 'Leads' | 'Dashboards' | 'Employees'); setSidebarOpen(false) }} className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] ${active ? 'bg-[#f2a541] font-semibold text-[#0e1b2c]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon size={16} /><span>{item.label}</span></button> })}</div></div> })}</div>
+      <div className="mt-8 flex-1 overflow-y-auto">{navGroups.map(group => { const visibleItems = group.items.filter(item => employeeRole === 'Admin' || item.label === 'Role & Module Access' ? employeeRole === 'Admin' : permissions.some(permission => permission.role === employeeRole && permission.module === item.label && permission.can_view)); if (!visibleItems.length) return null; return <div key={group.label} className="mb-6"><div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">{group.label}</div><div className="flex flex-col gap-1">{visibleItems.map(item => { const Icon = item.icon; const active = item.label === section; return <button key={item.label} onClick={() => { if (['Leads', 'Dashboards', 'Employees', 'Role & Module Access'].includes(item.label)) setSection(item.label as 'Leads' | 'Dashboards' | 'Employees' | 'Role & Module Access'); setSidebarOpen(false) }} className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] ${active ? 'bg-[#f2a541] font-semibold text-[#0e1b2c]' : 'text-white/65 hover:bg-white/10 hover:text-white'}`}><Icon size={16} /><span>{item.label}</span></button> })}</div></div> })}</div>
       <div className="border-t border-white/10 pt-4"><div className="flex items-center gap-3 rounded-xl bg-white/[0.06] p-3"><div className="flex size-9 items-center justify-center rounded-full bg-[#f2a541] text-sm font-bold text-[#0e1b2c]">MV</div><div><div className="text-sm font-semibold">{employeeName}</div><div className="text-xs text-white/45">{employeeRole}</div></div><button aria-label="Sign out" onClick={async () => { await createClient().auth.signOut(); window.location.replace('/login') }} className="ml-auto rounded-lg p-1.5 text-[#e56b5d] hover:bg-[#b23a22]/20 hover:text-[#ff9a8d]"><LogOut size={15} /></button></div></div>
     </aside>
     <div className="lg:pl-[252px]"><header className="sticky top-0 z-30 flex min-h-[76px] items-center justify-between border-b border-[#dedbd2] bg-[#f4f2ed]/95 px-5 backdrop-blur-md sm:px-8"><div className="flex items-center gap-3"><button aria-label="Open navigation" className="rounded-lg p-2 lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div><h1 className="font-heading text-[25px] font-bold tracking-[-0.035em]">{section}</h1><p className="mt-1 hidden text-xs text-[#8b9295] sm:block">{section === 'Leads' ? 'Manage, filter, and update every enquiry.' : 'Trading performance at a glance.'}</p></div></div><div className="flex items-center gap-2"><div className="hidden rounded-full border border-[#b7d6c5] bg-[#eaf5ee] px-2.5 py-1.5 text-[11px] text-[#23714a] sm:block">Supabase connected</div><button aria-label="Search" className="rounded-lg border border-[#dedbd2] bg-white p-2.5"><Search size={17} /></button><button aria-label="Notifications" className="rounded-lg border border-[#dedbd2] bg-white p-2.5"><Bell size={17} /></button></div></header>
-      <main className="mx-auto max-w-[1450px] px-5 py-7 sm:px-8 lg:px-10">{section === 'Leads' ? <LeadsView leads={leads} loading={loading} error={error} onNew={() => { setEditingLead(null); setShowForm(true) }} onEdit={openEditor} /> : section === 'Employees' ? <EmployeesView employees={employees} loading={loading} error={error} onRefresh={loadEmployees} canCreate={employeeRole === 'Director'} onNew={() => { setError(''); setShowEmployeeForm(true) }} /> : <DashboardView />}</main></div>
+      <main className="mx-auto max-w-[1450px] px-5 py-7 sm:px-8 lg:px-10">{section === 'Leads' ? <LeadsView leads={leads} loading={loading} error={error} onNew={() => { setEditingLead(null); setShowForm(true) }} onEdit={openEditor} /> : section === 'Employees' ? <EmployeesView employees={employees} loading={loading} error={error} onRefresh={loadEmployees} canCreate={employeeRole === 'Admin'} onNew={() => { setError(''); setShowEmployeeForm(true) }} /> : section === 'Role & Module Access' ? <RoleModuleAccessView roles={employeeRoles} permissions={permissions} error={error} onToggle={updatePermission} /> : <DashboardView />}</main></div>
     {sidebarOpen && <button aria-label="Close navigation overlay" className="fixed inset-0 z-30 bg-[#0e1b2c]/40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
     {showForm && <LeadForm lead={editingLead} onClose={() => { setShowForm(false); setEditingLead(null) }} onSubmit={saveLead} />}
     {showEmployeeForm && <EmployeeForm roles={employeeRoles} onClose={() => setShowEmployeeForm(false)} onSubmit={createEmployee} />}
@@ -123,6 +135,12 @@ function LeadsView({ leads, loading, error, onNew, onEdit }: { leads: Lead[]; lo
   const filtered = useMemo(() => leads.filter(lead => `${lead.customer_name} ${lead.product} ${lead.partner_name || ''}`.toLowerCase().includes(search.toLowerCase()) && (stage === 'All' || lead.stage === stage) && (source === 'All' || lead.source === source)), [leads, search, stage, source])
   const open = leads.filter(lead => !['Won', 'Lost'].includes(lead.stage)); const pipeline = open.reduce((sum, lead) => sum + Number(lead.qty) * Number(lead.target_rate), 0); const margin = open.reduce((sum, lead) => sum + Number(lead.qty) * (Number(lead.target_rate) - Number(lead.buy_rate)), 0)
   return <><div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-[#667078]">Every enquiry from first call to won or lost.</p></div><button onClick={onNew} className="flex min-h-11 items-center gap-2 rounded-lg bg-[#f2a541] px-4 text-sm font-bold text-[#0e1b2c]"><Plus size={17} /> New lead</button></div><div className="mb-6 grid gap-4 sm:grid-cols-3"><Kpi label="Open leads" value={String(open.length)} /><Kpi label="Pipeline value" value={money(pipeline)} /><Kpi label="Expected margin" value={money(margin)} /></div><div className="mb-5 rounded-2xl border border-[#e0ddd5] bg-white p-4"><div className="grid gap-3 md:grid-cols-[1.5fr_1fr_1fr_auto]"><label className="relative"><span className="sr-only">Search leads</span><Search className="absolute left-3 top-3 text-[#8b9295]" size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search customer, product, owner" className="h-11 w-full rounded-lg border border-[#dedbd2] pl-10 pr-3 text-sm outline-none focus:border-[#f2a541]" /></label><select value={stage} onChange={event => setStage(event.target.value)} aria-label="Filter by stage" className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option>{stages.map(item => <option key={item}>{item}</option>)}</select><select value={source} onChange={event => setSource(event.target.value)} aria-label="Filter by source" className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option>{['Referral', 'Partner network', 'Website', 'Cold call', 'Existing customer', 'Other'].map(item => <option key={item}>{item}</option>)}</select><button onClick={() => { setSearch(''); setStage('All'); setSource('All') }} className="h-11 rounded-lg border border-[#dedbd2] px-4 text-sm font-semibold hover:bg-[#f4f2ed]">Clear</button></div></div>{error && <div className="mb-4 rounded-xl border border-[#e8c2b9] bg-[#fff1ed] p-4 text-sm text-[#b23a22]">{error}</div>}{loading ? <div className="rounded-2xl bg-white p-8 text-sm text-[#667078]">Loading leads...</div> : <div className="overflow-hidden rounded-2xl border border-[#e0ddd5] bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#faf9f6] text-xs uppercase tracking-[0.08em] text-[#667078]"><tr><th className="px-5 py-4">Customer</th><th className="px-5 py-4">Product</th><th className="px-5 py-4">Owner</th><th className="px-5 py-4">Stage</th><th className="px-5 py-4">Source</th><th className="px-5 py-4">Value</th><th className="px-5 py-4 text-right">Action</th></tr></thead><tbody className="divide-y divide-[#eeeae2]">{filtered.map(lead => <tr key={lead.id} className="hover:bg-[#fffdf8]"><td className="px-5 py-4"><div className="font-semibold">{lead.customer_name}</div><div className="mt-1 text-xs text-[#8b9295]">{lead.contact_person || lead.email || 'No contact details'}</div></td><td className="px-5 py-4">{lead.product}<div className="mt-1 text-xs text-[#8b9295]">{lead.qty} {lead.uom}</div></td><td className="px-5 py-4">{lead.partner_name || '—'}</td><td className="px-5 py-4"><span className="rounded-full bg-[#f4f2ed] px-2.5 py-1 text-xs font-semibold">{lead.stage}</span></td><td className="px-5 py-4 text-[#667078]">{lead.source}</td><td className="px-5 py-4 font-semibold">{money(Number(lead.qty) * Number(lead.target_rate))}</td><td className="px-5 py-4 text-right"><button onClick={() => onEdit(lead)} aria-label={`Edit ${lead.customer_name}`} className="inline-flex items-center gap-2 rounded-lg border border-[#dedbd2] px-3 py-2 text-xs font-bold hover:border-[#f2a541] hover:bg-[#fff8eb]"><Pencil size={14} /> Edit</button></td></tr>)}</tbody></table></div>{filtered.length === 0 && <div className="p-10 text-center text-sm text-[#667078]">No leads match these filters.</div>}</div>}</>
+}
+
+function RoleModuleAccessView({ roles, permissions, error, onToggle }: { roles: string[]; permissions: RolePermission[]; error: string; onToggle: (role: string, module: string, allowed: boolean) => void }) {
+  const modules = navGroups.flatMap(group => group.items.map(item => ({ group: group.label, module: item.label }))).filter(item => item.module !== 'Role & Module Access')
+  const allowed = (role: string, module: string) => permissions.find(item => item.role === role && item.module === module)?.can_view ?? false
+  return <div><div className="mb-7"><p className="text-sm text-[#667078]">Admin controls which roles can access each Supply360 module.</p></div>{error && <div className="mb-4 rounded-xl border border-[#e8c2b9] bg-[#fff1ed] p-4 text-sm text-[#b23a22]">{error}</div>}<div className="overflow-hidden rounded-2xl border border-[#e0ddd5] bg-white"><div className="border-b border-[#e0ddd5] px-5 py-4"><h2 className="font-heading text-lg font-bold">Roles &amp; responsibilities</h2><p className="mt-1 text-xs text-[#667078]">Toggle access by role. Ops Lead remains hidden until Admin grants a module.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-[#faf9f6] text-xs uppercase tracking-[0.12em] text-[#8b9295]"><tr><th className="px-5 py-3 font-semibold">Module</th>{roles.map(role => <th key={role} className="px-5 py-3 text-center font-semibold">{role}</th>)}</tr></thead><tbody className="divide-y divide-[#eeeae2]">{modules.map(item => <tr key={item.module} className="hover:bg-[#fcfbf8]"><td className="px-5 py-4"><div className="font-semibold">{item.module}</div><div className="mt-0.5 text-xs text-[#8b9295]">{item.group}</div></td>{roles.map(role => { const isAllowed = allowed(role, item.module); return <td key={`${item.module}-${role}`} className="px-5 py-4 text-center"><button type="button" onClick={() => onToggle(role, item.module, !isAllowed)} className={`inline-flex min-w-[82px] justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${isAllowed ? 'bg-[#eaf5ee] text-[#23714a]' : 'bg-[#f1f0ed] text-[#8b9295]'}`}>{isAllowed ? 'Allowed' : 'No access'}</button></td> })}</tr>)}</tbody></table></div></div></div>
 }
 
 function EmployeesView({ employees, loading, error, onRefresh, canCreate, onNew }: { employees: Employee[]; loading: boolean; error: string; onRefresh: () => void; canCreate: boolean; onNew: () => void }) {
