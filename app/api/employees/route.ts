@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   if (userError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: actor, error: actorError } = await admin.from('employees').select('role,is_active').eq('id', user.id).maybeSingle()
-  if (actorError || !actor?.is_active || actor.role !== 'Director') return NextResponse.json({ error: 'Only active Directors can create employees.' }, { status: 403 })
+  if (actorError || !actor?.is_active || actor.role !== 'Admin') return NextResponse.json({ error: 'Only active Admins can create employees.' }, { status: 403 })
 
   const body = await request.json()
   const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : ''
