@@ -83,7 +83,11 @@ export default function Page() {
     else setLeads((data ?? []) as Lead[])
     setLoading(false)
   }
-  useEffect(() => { if (section === 'Leads') { loadLeads(); if (!customers.length) loadCustomers(); if (!employees.length) loadEmployees() } }, [section])
+  const loadActiveEmployees = async () => {
+    const { data } = await createClient().rpc('list_active_employees')
+    setEmployees((data ?? []) as Employee[])
+  }
+  useEffect(() => { if (section === 'Leads') { loadLeads(); if (!customers.length) loadCustomers(); if (!employees.length) loadActiveEmployees() } }, [section])
 
   const loadEmployees = async () => {
     setLoading(true)

@@ -22,10 +22,17 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const token = request.headers.get('authorization')?.replace('Bearer ', '')
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { data: employee } = await supabase.from('employees').select('is_active').eq('id', user.id).maybeSingle()
+  if (!employee?.is_active) return NextResponse.json({ error: 'Employee access required' }, { status: 403 })
   const pathname = request.nextUrl.searchParams.get('pathname')
   if (!pathname) return NextResponse.json({ error: 'Missing pathname' }, { status: 400 })
   const { get } = await import('@vercel/blob')
   const result = await get(pathname, { access: 'private' })
   if (!result) return new NextResponse('Not found', { status: 404 })
-  return new NextResponse(result.stream, { headers: { 'Content-Type': result.blob.contentType, 'Cache-Control': 'private, no-cache' } })
+  return new NextResponse(result.stream, { headers: { 'Content-Type': result.blob.contentType || 'application/octet-stream', 'Cache-Control': 'private, no-cache' } })
 }
