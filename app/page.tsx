@@ -52,7 +52,8 @@ const navGroups = [
       { label: 'Vendor Master', icon: Truck },
       { label: 'Customer Master', icon: Users },
       { label: 'SKU Master', icon: Boxes },
-      { label: 'Our Companies', icon: Settings2 },
+      { label: 'Business Entity', icon: Settings2 },
+      { label: 'Employees', icon: Users },
     ],
   },
 ]
