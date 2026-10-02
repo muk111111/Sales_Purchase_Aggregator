@@ -62,7 +62,8 @@ export default function Page() {
 
   const loadEmployees = async () => {
     setLoading(true)
-    const { data, error: queryError } = await createClient().from('employees').select('id,full_name,email,role,is_active,created_at').order('full_name')
+    setError('')
+    const { data, error: queryError } = await createClient().rpc('list_employees_for_admin')
     if (queryError) setError(`Could not load employees: ${queryError.message}`)
     else setEmployees((data ?? []) as Employee[])
     setLoading(false)
