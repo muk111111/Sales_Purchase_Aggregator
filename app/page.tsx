@@ -30,14 +30,12 @@ const navGroups = [
     label: 'Buy',
     items: [
       { label: 'Vendor Comparison', icon: BarChart3 },
-      { label: 'Vendor Master', icon: Truck },
       { label: 'Purchases & PIs', icon: FileText, badge: 3 },
     ],
   },
   {
     label: 'Sell',
     items: [
-      { label: 'Customer Master', icon: Users },
       { label: 'Sales & Invoices', icon: FileText },
     ],
   },
@@ -48,8 +46,16 @@ const navGroups = [
       { label: 'Stock & Expenses', icon: WalletCards, badge: 5 },
     ],
   },
-  { label: 'SKU Master', items: [{ label: 'SKU Master', icon: Boxes }] },
-  { label: 'Our Companies', items: [{ label: 'Company Master', icon: Settings2 }] },
+  {
+    label: 'Master',
+    items: [
+      { label: 'Vendor Master', icon: Truck },
+      { label: 'Customer Master', icon: Users },
+      { label: 'SKU Master', icon: Boxes },
+      { label: 'Business Entity', icon: Settings2 },
+      { label: 'Employees', icon: Users },
+    ],
+  },
 ]
 
 const kpis = [
