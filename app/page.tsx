@@ -15,7 +15,6 @@ import {
   Menu,
   PackageCheck,
   PanelLeft,
-  Plus,
   Search,
   Settings2,
   Truck,
@@ -118,7 +117,7 @@ export default function Page() {
       <div className="lg:pl-[252px]">
         <header className="sticky top-0 z-30 flex min-h-[76px] items-center justify-between border-b border-[#dedbd2] bg-[#f4f2ed]/95 px-5 backdrop-blur-md sm:px-8">
           <div className="flex items-center gap-3"><button aria-label="Open navigation" className="rounded-lg p-2 hover:bg-white lg:hidden" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div><h1 className="font-heading text-[25px] font-bold tracking-[-0.035em]">Dashboards</h1></div></div>
-          <div className="flex items-center gap-2 sm:gap-3"><div className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] sm:flex ${connected ? 'border-[#b7d6c5] bg-[#eaf5ee] text-[#23714a]' : 'border-[#e8c2b9] bg-[#fff1ed] text-[#b23a22]'}`}><span className={`size-1.5 rounded-full ${connected ? 'bg-[#23714a]' : 'bg-[#b23a22]'}`} />{connected ? 'Supabase connected' : 'Supabase needs setup'}</div><button aria-label="Search" className="rounded-lg border border-[#dedbd2] bg-white p-2.5 text-[#52606a] hover:border-[#b8b3a8]"><Search size={17} /></button><button aria-label="Notifications" className="relative rounded-lg border border-[#dedbd2] bg-white p-2.5 text-[#52606a] hover:border-[#b8b3a8]"><Bell size={17} /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-[#b23a22]" /></button><button className="hidden items-center gap-2 rounded-lg bg-[#0e1b2c] px-3 py-2.5 text-xs font-semibold text-white hover:bg-[#1a2b42] sm:flex"><Plus size={15} /> New sale</button></div>
+          <div className="flex items-center gap-2 sm:gap-3"><div className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] sm:flex ${connected ? 'border-[#b7d6c5] bg-[#eaf5ee] text-[#23714a]' : 'border-[#e8c2b9] bg-[#fff1ed] text-[#b23a22]'}`}><span className={`size-1.5 rounded-full ${connected ? 'bg-[#23714a]' : 'bg-[#b23a22]'}`} />{connected ? 'Supabase connected' : 'Supabase needs setup'}</div><button aria-label="Search" className="rounded-lg border border-[#dedbd2] bg-white p-2.5 text-[#52606a] hover:border-[#b8b3a8]"><Search size={17} /></button><button aria-label="Notifications" className="relative rounded-lg border border-[#dedbd2] bg-white p-2.5 text-[#52606a] hover:border-[#b8b3a8]"><Bell size={17} /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-[#b23a22]" /></button></div>
         </header>
 
         <main className="mx-auto max-w-[1450px] px-5 py-7 sm:px-8 lg:px-10">
