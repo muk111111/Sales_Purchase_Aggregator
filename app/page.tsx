@@ -50,17 +50,16 @@ const navGroups = [
   {
     label: 'Master',
     items: [
-      {
-        label: 'Business Entity',
-        icon: Building2,
-        children: [
-          { label: 'Companies', icon: Building2 },
-          { label: 'Employees', icon: Users },
-        ],
-      },
       { label: 'Vendor Master', icon: Truck },
       { label: 'Customer Master', icon: Users },
       { label: 'SKU Master', icon: Boxes },
+    ],
+  },
+  {
+    label: 'Business Entity',
+    items: [
+      { label: 'Companies', icon: Building2 },
+      { label: 'Employees', icon: Users },
     ],
   },
 ]
