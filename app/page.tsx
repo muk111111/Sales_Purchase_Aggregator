@@ -16,7 +16,7 @@ type RolePermission = { role: string; module: string; can_view: boolean }
 type Customer = { id: string; customer_code: string; customer_name: string; gstin: string | null; contact_person: string | null; phone: string | null; city_state: string | null; credit_days: number; status: 'Active' | 'Inactive'; created_at: string }
 type Vendor = { id: string; vendor_code: string; vendor_name: string; display_name: string | null; business_line: string; vendor_type: string; gstin: string | null; contact_person: string; phone: string; city_state: string; credit_days: number; payment_terms: string | null; billing_emails: string[]; status: 'Active' | 'On hold' | 'Blacklisted' | 'Inactive'; notes: string | null }
 type SKU = { id: string; code: string; name: string; category: string; sub_category: string | null; business_line: string; brand: string | null; model: string | null; status: 'Active' | 'Discontinued'; spec: string | null; size: string | null; gsm: string | null; colour: string | null; weight_kg: number | null; barcode: string | null; uom: string; pack_qty: number; hsn: string; gst_pct: number; cess_pct: number; std_purchase_rate: number | null; std_selling_rate: number | null; min_margin_pct: number; mrp: number | null; opening_qty: number; opening_rate: number; opening_date: string | null; reorder_level: number | null; reorder_qty: number | null; location: string | null; notes: string | null }
-type SkuMasterType = 'Category' | 'Business line' | 'Sub-category' | 'Brand' | 'Model' | 'Specification' | 'Colour' | 'GSM' | 'Packaging Material'
+type SkuMasterType = 'Category' | 'Business line' | 'Sub-category' | 'Brand' | 'Model' | 'Specification' | 'Colour' | 'GSM'
 type SkuMasterValue = { id: string; master_type: SkuMasterType; value: string; is_active: boolean }
 type Company = { id: string; code: string; legal_name: string; trade_name: string | null; entity_type: string; logo_url: string | null; gstin: string | null; pan: string | null; state_name: string | null; state_code: string | null; reg_address: string | null; city: string | null; pin: string | null; phone: string | null; email: string | null; fy: string; status: 'Active' | 'Inactive'; sells: boolean; buys: boolean; is_default: boolean }
 type PurchaseDoc = { id: string; number: string | null; status: string; doc_date: string; expected_date: string | null; currency: string; vendor_id: string | null; company_id: string; notes: string | null; created_at: string }
@@ -87,7 +87,7 @@ export default function Page() {
     setLoading(false)
   }
   const loadSkuMasters = async () => {
-    const { data, error: queryError } = await createClient().from('sku_master_values').select('id,master_type,value,is_active').eq('is_active', true).order('value')
+    const { data, error: queryError } = await createClient().from('sku_master_values').select('id,master_type,value,is_active').eq('is_active', true).neq('master_type', 'Packaging Material').order('value')
     if (queryError) setError(`Could not load SKU masters: ${queryError.message}`); else setSkuMasterValues((data ?? []) as SkuMasterValue[])
   }
   useEffect(() => { if (section === 'SKU Master' || section === 'SKU Configuration') { loadSkus(); loadSkuMasters() } }, [section])
@@ -342,7 +342,7 @@ function SKUsView({ initialTab = 'skus', skus, loading, error, onRefresh, onNew,
 }
 
 function SkuMastersView({ masters, canEdit, type, onTypeChange, value, onValueChange, onAdd, onEditMaster }: { masters: SkuMasterValue[]; canEdit: boolean; type: SkuMasterType; onTypeChange: (type: SkuMasterType) => void; value: string; onValueChange: (value: string) => void; onAdd: (type: SkuMasterType, value: string) => Promise<void>; onEditMaster: (id: string, value: string) => void }) {
-  const types: SkuMasterType[] = ['Category', 'Business line', 'Sub-category', 'Brand', 'Model', 'Specification', 'Colour', 'GSM', 'Packaging Material']
+  const types: SkuMasterType[] = ['Category', 'Business line', 'Sub-category', 'Brand', 'Model', 'Specification', 'Colour', 'GSM']
   const values = masters.filter(item => item.master_type === type)
   const [importStatus, setImportStatus] = useState<UploadStatus | null>(null)
   const download = () => { const csv = 'master_type,value,is_active'; const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'sku-masters.csv'; anchor.click(); URL.revokeObjectURL(url) }
