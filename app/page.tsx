@@ -238,6 +238,11 @@ export default function Page() {
   useEffect(() => { if (section === 'Employees') loadEmployees(); if (section === 'Role & Module Access') { loadPermissions(); if (!employeeRoles.length) loadEmployees() } }, [section])
 
   const uploadAttachment = (file: File, leadId: string, accessToken: string, index: number) => new Promise<void>((resolve, reject) => {
+    const markFailed = (message: string) => {
+      setUploadStatuses(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, state: 'error', error: message } : item))
+      reject(new Error(message))
+    }
+    if (!accessToken) { markFailed('Your session expired. Please sign in again and retry the upload.'); return }
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/leads/attachments')
     xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
@@ -246,9 +251,11 @@ export default function Page() {
       let result: { error?: string } = {}
       try { result = JSON.parse(xhr.responseText) } catch { result = { error: 'The server returned an invalid response.' } }
       if (xhr.status >= 200 && xhr.status < 300) { setUploadStatuses(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, progress: 100, state: 'complete' } : item)); resolve() }
-      else { const message = result.error || `Upload failed with status ${xhr.status}.`; setUploadStatuses(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, state: 'error', error: message } : item)); reject(new Error(message)) }
+      else markFailed(result.error || `Upload failed with status ${xhr.status}.`)
     }
-    xhr.onerror = () => { const message = 'Network error while uploading.'; setUploadStatuses(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, state: 'error', error: message } : item)); reject(new Error(message)) }
+    xhr.onerror = () => markFailed('Network error while uploading. Check your connection and try again.')
+    xhr.ontimeout = () => markFailed('Upload timed out. Please try again.')
+    xhr.timeout = 120000
     const uploadData = new FormData(); uploadData.append('file', file); uploadData.append('lead_id', leadId); xhr.send(uploadData)
   })
 
