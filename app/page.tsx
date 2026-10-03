@@ -351,14 +351,17 @@ function SkuMastersView({ masters, canEdit, type, onTypeChange, value, onValueCh
     if (!file || !canEdit) return
     setImportStatus({ fileName: file.name, progress: 5, state: 'uploading' })
     try {
-      const lines = (await file.text()).split(/\r?\n/).filter(line => line.trim())
+      const text = (await file.text()).replace(/^\uFEFF/, '')
+      const lines = text.split(/\r?\n/).filter(line => line.trim())
       if (lines.length < 2) throw new Error('The CSV is empty or has no data rows.')
       const parse = (line: string) => { const cells: string[] = []; let cell = ''; let quoted = false; for (let index = 0; index < line.length; index += 1) { const char = line[index]; if (char === '"') { if (quoted && line[index + 1] === '"') { cell += '"'; index += 1 } else quoted = !quoted } else if (char === ',' && !quoted) { cells.push(cell.trim()); cell = '' } else cell += char }; cells.push(cell.trim()); return cells }
-      const header = parse(lines[0]).map(cell => cell.toLowerCase())
+      const normalize = (value: string | undefined) => value?.replace(/^\uFEFF/, '').trim().toLowerCase() ?? ''
+      const header = parse(lines[0]).map(normalize)
       const typeIndex = header.indexOf('master_type'); const valueIndex = header.indexOf('value')
       if (typeIndex < 0 || valueIndex < 0) throw new Error('CSV must contain master_type and value columns.')
-      const rows = lines.slice(1).map(parse).filter(row => row[typeIndex]?.toLowerCase() !== 'master_type')
+      const rows = lines.slice(1).map(parse).filter(row => normalize(row[typeIndex]) !== 'master_type')
       const valid = rows.map(row => ({ type: row[typeIndex]?.trim() as SkuMasterType, value: row[valueIndex]?.trim() })).filter(row => types.includes(row.type) && row.value)
+      if (valid.length === 0) throw new Error('No valid rows found. Use the SKU Configuration import with master_type and value columns.')
       if (!valid.length) throw new Error('No valid master rows found. Check the master_type values.')
       for (let index = 0; index < valid.length; index += 1) { await onAdd(valid[index].type, valid[index].value); setImportStatus({ fileName: file.name, progress: Math.round(((index + 1) / valid.length) * 100), state: 'uploading' }) }
       setImportStatus({ fileName: file.name, progress: 100, state: 'complete' })
