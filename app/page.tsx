@@ -149,8 +149,9 @@ export default function Page() {
   }
   const downloadPurchasePdf = async (doc: PurchaseDoc) => {
   setError('')
-  const popup = window.open('', '_blank', 'noopener,noreferrer')
+  const popup = window.open('', '_blank')
   if (!popup) { setError('Your browser blocked the PO PDF window. Please allow pop-ups for this site, then click PDF again.'); return }
+  popup.opener = null
   const supabase = createClient()
     const [{ data: lineData, error: lineError }] = await Promise.all([
       supabase.from('purchase_doc_lines').select('sku_id,product_name,product_code,hsn,description,qty,unit,unit_price,discount_pct,tax_pct,taxable,gst_amount,line_total').eq('purchase_doc_id', doc.id).order('id'),
