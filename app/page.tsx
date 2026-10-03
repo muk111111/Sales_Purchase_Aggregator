@@ -19,8 +19,8 @@ type SKU = { id: string; code: string; name: string; category: string; sub_categ
 type SkuMasterType = 'Category' | 'Business line' | 'Sub-category' | 'Brand' | 'Model' | 'Specification' | 'Colour' | 'GSM'
 type SkuMasterValue = { id: string; master_type: SkuMasterType; value: string; is_active: boolean }
 type Company = { id: string; code: string; legal_name: string; trade_name: string | null; entity_type: string; logo_url: string | null; gstin: string | null; pan: string | null; state_name: string | null; state_code: string | null; reg_address: string | null; city: string | null; pin: string | null; phone: string | null; email: string | null; fy: string; status: 'Active' | 'Inactive'; sells: boolean; buys: boolean; is_default: boolean }
-  type PurchaseDoc = { id: string; number: string | null; status: string; doc_date: string; expected_date: string | null; currency: string; vendor_id: string | null; company_id: string; notes: string | null; created_at: string }
-  type PurchaseLine = { sku_id: string | null; description: string; qty: number; unit_price: number; tax_pct: number }
+  type PurchaseDoc = { id: string; number: string | null; po_number: string | null; pi_number: string | null; status: string; doc_date: string; po_date: string | null; pi_date: string | null; expected_date: string | null; vendor_id: string | null; company_id: string; purchase_type: string; vendor_invoice_no: string | null; vendor_invoice_date: string | null; ship_to: Record<string, string> | null; payment_basis: string; payment_days: number; delivery_days: number; charges_amount: number; charges_gst_pct: number; annexure_enabled: boolean; notes: string | null; created_at: string }
+  type PurchaseLine = { sku_id: string | null; product_name?: string; product_code?: string; hsn?: string; description: string; qty: number; unit?: string; unit_price: number; discount_pct?: number; tax_pct: number; taxable?: number; gst_amount?: number; line_total?: number }
 type Section = 'Dashboards' | 'Leads' | 'Vendor Comparison' | 'Sales & Invoices' | 'Commissions & Cuts' | 'Stock & Expenses' | 'Vendor Master' | 'Customer Master' | 'SKU Master' | 'SKU Configuration' | 'Companies' | 'Employees' | 'Role & Module Access'
 type UploadStatus = { fileName: string; progress: number; state: 'uploading' | 'complete' | 'error'; error?: string }
 
@@ -142,7 +142,7 @@ export default function Page() {
   useEffect(() => { if (section === 'Companies') loadCompanies() }, [section])
   const loadPurchaseDocs = async () => {
     setLoading(true); setError('')
-    const { data, error: queryError } = await createClient().from('purchase_docs').select('id,number,status,doc_date,expected_date,currency,vendor_id,company_id,notes,created_at').order('created_at', { ascending: false })
+    const { data, error: queryError } = await createClient().from('purchase_docs').select('id,number,po_number,pi_number,status,doc_date,po_date,pi_date,expected_date,vendor_id,company_id,purchase_type,vendor_invoice_no,vendor_invoice_date,ship_to,payment_basis,payment_days,delivery_days,charges_amount,charges_gst_pct,annexure_enabled,notes,created_at').order('created_at', { ascending: false })
     if (queryError) setError(`Could not load purchase documents: ${queryError.message}`); else setPurchaseDocs((data ?? []) as PurchaseDoc[])
     setLoading(false)
   }
@@ -150,8 +150,8 @@ export default function Page() {
     event.preventDefault(); setError(''); setSaveMessage('')
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
     const supabase = createClient(); const session = (await supabase.auth.getSession()).data.session
-    const docPayload = { company_id: values.company_id, vendor_id: values.vendor_id, doc_date: values.doc_date, expected_date: values.expected_date || null, currency: values.currency, notes: values.notes || null }
-    const linePayload = { sku_id: values.sku_id || null, description: values.description, qty: Number(values.qty), unit_price: Number(values.unit_price), tax_pct: Number(values.tax_pct || 0) }
+    const docPayload = { company_id: values.company_id, vendor_id: values.vendor_id, doc_date: values.doc_date, po_date: values.doc_date, expected_date: values.expected_date || null, purchase_type: values.purchase_type || 'STOCK', vendor_invoice_no: values.vendor_invoice_no || null, vendor_invoice_date: values.vendor_invoice_date || null, payment_basis: values.payment_basis || 'Days from date of delivery', payment_days: Number(values.payment_days || 45), delivery_days: Number(values.delivery_days || 5), charges_amount: Number(values.charges_amount || 0), charges_gst_pct: Number(values.charges_gst_pct || 0), annexure_enabled: values.annexure_enabled === 'on', notes: values.notes || null }
+    const linePayload = { sku_id: values.sku_id || null, product_name: values.product_name || values.description, product_code: values.product_code || null, hsn: values.hsn || null, description: values.description, qty: Number(values.qty), unit: values.unit || null, unit_price: Number(values.unit_price), discount_pct: Number(values.discount_pct || 0), tax_pct: Number(values.tax_pct || 0), taxable: Number(values.qty) * Number(values.unit_price) * (1 - Number(values.discount_pct || 0) / 100), gst_amount: Number(values.qty) * Number(values.unit_price) * (1 - Number(values.discount_pct || 0) / 100) * Number(values.tax_pct || 0) / 100, line_total: Number(values.qty) * Number(values.unit_price) * (1 - Number(values.discount_pct || 0) / 100) * (1 + Number(values.tax_pct || 0) / 100) }
     const documentId = editingPurchaseDoc?.id
     let savedDocumentId = documentId
 
