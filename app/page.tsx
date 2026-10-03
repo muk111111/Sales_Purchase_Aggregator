@@ -153,11 +153,14 @@ export default function Page() {
     const supabase = createClient(); const session = (await supabase.auth.getSession()).data.session
     const docPayload = { company_id: values.company_id, vendor_id: values.vendor_id, doc_date: values.doc_date, expected_date: values.expected_date || null, currency: values.currency, notes: values.notes || null }
     const linePayload = { sku_id: values.sku_id || null, description: values.description, qty: Number(values.qty), unit_price: Number(values.unit_price), tax_pct: Number(values.tax_pct || 0) }
+    const documentId = editingPurchaseDoc?.id
     const { data: doc, error: saveError } = editingPurchaseDoc
-      ? await supabase.from('purchase_docs').update(docPayload).eq('id', editingPurchaseDoc.id).select('id').single()
+      ? await supabase.from('purchase_docs').update(docPayload).eq('id', editingPurchaseDoc.id)
       : await supabase.from('purchase_docs').insert({ ...docPayload, created_by: session?.user.id }).select('id').single()
-    if (saveError || !doc) { setError(`Could not ${editingPurchaseDoc ? 'update' : 'save'} purchase document: ${saveError?.message || 'Unknown error'}`); return }
-    const lineQuery = editingPurchaseDoc ? supabase.from('purchase_doc_lines').update(linePayload).eq('purchase_doc_id', editingPurchaseDoc.id) : supabase.from('purchase_doc_lines').insert({ purchase_doc_id: doc.id, ...linePayload })
+    if (saveError || (!editingPurchaseDoc && !doc)) { setError(`Could not ${editingPurchaseDoc ? 'update' : 'save'} purchase document: ${saveError?.message || 'Unknown error'}`); return }
+    const lineQuery = editingPurchaseDoc
+      ? supabase.from('purchase_doc_lines').update(linePayload).eq('purchase_doc_id', documentId)
+      : supabase.from('purchase_doc_lines').insert({ purchase_doc_id: doc.id, ...linePayload })
     const { error: lineError } = await lineQuery
     if (lineError) { setError(`Purchase document saved, but line could not be updated: ${lineError.message}`); return }
     setShowPurchaseForm(false); setEditingPurchaseDoc(null); setEditingPurchaseLine(null); setSaveMessage(editingPurchaseDoc ? 'Purchase order draft updated.' : 'Purchase order draft saved. Submit it to assign the PO number.'); await loadPurchaseDocs()
