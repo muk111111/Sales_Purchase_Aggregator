@@ -204,7 +204,24 @@ export default function Page() {
     if (lineError) { setError(`Purchase document saved, but line could not be updated: ${lineError.message}`); return }
     setShowPurchaseForm(false); setEditingPurchaseDoc(null); setEditingPurchaseLine(null); setSaveMessage(editingPurchaseDoc ? 'Purchase order draft updated.' : 'Purchase order draft saved. Submit it to assign the PO number.'); await loadPurchaseDocs()
   }
-  const submitPurchaseDoc = async (id: string) => { const { error: submitError } = await createClient().rpc('submit_purchase_doc', { p_doc_id: id }); if (submitError) { const message = submitError.message.toLowerCase().includes('document series') ? 'Could not submit purchase order: configure a PO document series for this company in the document-series setup before submitting.' : `Could not submit purchase order: ${submitError.message}`; setError(message) } else { setSaveMessage('Purchase order submitted and numbered.'); await loadPurchaseDocs() } }
+  const submitPurchaseDoc = async (id: string) => {
+    const supabase = createClient()
+    let { error: submitError } = await supabase.rpc('submit_purchase_doc', { p_doc_id: id })
+    if (submitError && submitError.message.toLowerCase().includes('document series')) {
+      const { data: document } = await supabase.from('purchase_docs').select('company_id').eq('id', id).maybeSingle()
+      if (document?.company_id) {
+        const { data: existingSeries, error: seriesReadError } = await supabase.from('document_series').select('id').eq('company_id', document.company_id).eq('doc_type', 'PO').maybeSingle()
+        if (!seriesReadError && !existingSeries) {
+          const { error: seriesCreateError } = await supabase.from('document_series').insert({ company_id: document.company_id, doc_type: 'PO', prefix: 'P', next_number: 300419, padding: 7, reset_each_fy: false })
+          if (!seriesCreateError) ({ error: submitError } = await supabase.rpc('submit_purchase_doc', { p_doc_id: id }))
+        }
+      }
+    }
+    if (submitError) {
+      const message = submitError.message.toLowerCase().includes('document series') ? 'Could not submit purchase order: configure a PO document series for this company in the document-series setup before submitting. The default PO series starts at P0300419.' : `Could not submit purchase order: ${submitError.message}`
+      setError(message)
+    } else { setSaveMessage('Purchase order submitted and numbered.'); await loadPurchaseDocs() }
+  }
   const editPurchaseDoc = async (doc: PurchaseDoc) => { setError(''); const { data: line, error: lineError } = await createClient().from('purchase_doc_lines').select('sku_id,description,qty,unit_price,tax_pct').eq('purchase_doc_id', doc.id).limit(1).maybeSingle(); if (lineError || !line) { setError(`Could not open purchase order for editing: ${lineError?.message || 'No line found.'}`); return } setEditingPurchaseDoc(doc); setEditingPurchaseLine(line as PurchaseLine); setShowPurchaseForm(true) }
   const saveCompany = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setError(''); setSaveMessage('')
