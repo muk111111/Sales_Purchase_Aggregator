@@ -154,13 +154,44 @@ export default function Page() {
     const docPayload = { company_id: values.company_id, vendor_id: values.vendor_id, doc_date: values.doc_date, expected_date: values.expected_date || null, currency: values.currency, notes: values.notes || null }
     const linePayload = { sku_id: values.sku_id || null, description: values.description, qty: Number(values.qty), unit_price: Number(values.unit_price), tax_pct: Number(values.tax_pct || 0) }
     const documentId = editingPurchaseDoc?.id
-    const { data: doc, error: saveError } = editingPurchaseDoc
-      ? await supabase.from('purchase_docs').update(docPayload).eq('id', editingPurchaseDoc.id)
-      : await supabase.from('purchase_docs').insert({ ...docPayload, created_by: session?.user.id }).select('id').single()
-    if (saveError || (!editingPurchaseDoc && !doc)) { setError(`Could not ${editingPurchaseDoc ? 'update' : 'save'} purchase document: ${saveError?.message || 'Unknown error'}`); return }
+    let savedDocumentId = documentId
+
+    if (editingPurchaseDoc) {
+      // Do not use `.single()` for an UPDATE response. PostgREST returns an
+      // array for updates and can raise PGRST116 when a policy filters it out.
+      const { data: updatedDoc, error: updateError } = await supabase
+        .from('purchase_docs')
+        .update(docPayload)
+        .eq('id', editingPurchaseDoc.id)
+        .eq('status', 'DRAFT')
+        .select('id')
+        .maybeSingle()
+      if (updateError || !updatedDoc) {
+        setError(`Could not update purchase document: ${updateError?.message || 'The draft was not found or is no longer editable.'}`)
+        return
+      }
+      savedDocumentId = updatedDoc.id
+    } else {
+      const { data: insertedDoc, error: insertError } = await supabase
+        .from('purchase_docs')
+        .insert({ ...docPayload, created_by: session?.user.id })
+        .select('id')
+        .single()
+      if (insertError || !insertedDoc) {
+        setError(`Could not save purchase document: ${insertError?.message || 'Unknown error'}`)
+        return
+      }
+      savedDocumentId = insertedDoc.id
+    }
+
+    if (!savedDocumentId) {
+      setError('Could not save purchase document: no document id was returned.')
+      return
+    }
+
     const lineQuery = editingPurchaseDoc
-      ? supabase.from('purchase_doc_lines').update(linePayload).eq('purchase_doc_id', documentId)
-      : supabase.from('purchase_doc_lines').insert({ purchase_doc_id: doc.id, ...linePayload })
+      ? supabase.from('purchase_doc_lines').update(linePayload).eq('purchase_doc_id', savedDocumentId)
+      : supabase.from('purchase_doc_lines').insert({ purchase_doc_id: savedDocumentId, ...linePayload })
     const { error: lineError } = await lineQuery
     if (lineError) { setError(`Purchase document saved, but line could not be updated: ${lineError.message}`); return }
     setShowPurchaseForm(false); setEditingPurchaseDoc(null); setEditingPurchaseLine(null); setSaveMessage(editingPurchaseDoc ? 'Purchase order draft updated.' : 'Purchase order draft saved. Submit it to assign the PO number.'); await loadPurchaseDocs()
