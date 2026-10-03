@@ -15,10 +15,15 @@ export async function POST(request: NextRequest) {
   const leadId = formData.get('lead_id')
   if (!(file instanceof File) || typeof leadId !== 'string') return NextResponse.json({ error: 'File and lead are required' }, { status: 400 })
   if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: 'Files must be 10 MB or smaller' }, { status: 400 })
-  const blob = await put(`leads/${leadId}/${crypto.randomUUID()}-${file.name}`, file, { access: 'private' })
-  const { error } = await supabase.from('lead_attachments').insert({ lead_id: leadId, pathname: blob.pathname, filename: file.name, content_type: file.type || null, size_bytes: file.size, created_by: user.id })
-  if (error) return NextResponse.json({ error: 'Could not save attachment metadata' }, { status: 500 })
-  return NextResponse.json({ pathname: blob.pathname, filename: file.name })
+  try {
+    const blob = await put(`leads/${leadId}/${crypto.randomUUID()}-${file.name}`, file, { access: 'private' })
+    const { error } = await supabase.from('lead_attachments').insert({ lead_id: leadId, pathname: blob.pathname, filename: file.name, content_type: file.type || null, size_bytes: file.size, created_by: user.id })
+    if (error) return NextResponse.json({ error: `Could not save attachment metadata: ${error.message}` }, { status: 500 })
+    return NextResponse.json({ pathname: blob.pathname, filename: file.name })
+  } catch (uploadError) {
+    const message = uploadError instanceof Error ? uploadError.message : 'The storage upload failed.'
+    return NextResponse.json({ error: `Could not upload ${file.name}: ${message}` }, { status: 500 })
+  }
 }
 
 export async function GET(request: NextRequest) {
