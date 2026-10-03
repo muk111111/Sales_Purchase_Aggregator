@@ -162,10 +162,16 @@ export default function Page() {
     const logoFile = formData.get('logo_file')
     if (logoFile instanceof File && logoFile.size > 0) {
       const uploadData = new FormData(); uploadData.append('file', logoFile)
-      const uploadResponse = await fetch('/api/company-logo', { method: 'POST', body: uploadData })
-      const uploadResult = await uploadResponse.json()
-      if (!uploadResponse.ok) { setError(uploadResult.error || 'Could not upload company logo.'); return }
-      logoUrl = uploadResult.url
+      try {
+        const uploadResponse = await fetch('/api/company-logo', { method: 'POST', body: uploadData })
+        const uploadResult = await uploadResponse.json().catch(() => ({}))
+        if (!uploadResponse.ok) { setError(uploadResult.error || `Could not upload company logo (${uploadResponse.status}).`); return }
+        if (!uploadResult.url) { setError('Could not upload company logo: no file URL was returned.'); return }
+        logoUrl = uploadResult.url
+      } catch {
+        setError('Could not reach the logo upload service. Please check your connection and try again.')
+        return
+      }
     }
     const { error: saveError } = await createClient().from('companies').insert({ code: values.code, legal_name: values.legal_name, trade_name: values.trade_name || null, entity_type: values.entity_type, logo_url: logoUrl || null, gstin: values.gstin || null, pan: values.pan || null, state_name: values.state_name || null, state_code: values.state_code || null, reg_address: values.reg_address || null, city: values.city || null, pin: values.pin || null, phone: values.phone || null, email: values.email || null, fy: values.fy || '2026-27', status: values.status, sells: values.sells === 'on', buys: values.buys === 'on', is_default: values.is_default === 'on' })
     if (saveError) { setError(`Could not save company: ${saveError.message}`); return }
