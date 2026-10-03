@@ -351,7 +351,7 @@ function SkuMastersView({ masters, canEdit, type, onTypeChange, value, onValueCh
     if (!file || !canEdit) return
     setImportStatus({ fileName: file.name, progress: 5, state: 'uploading' })
     try {
-      const lines = (await file.text()).split(/\\r?\\n/).filter(line => line.trim())
+      const lines = (await file.text()).split(/\r?\n/).filter(line => line.trim())
       if (lines.length < 2) throw new Error('The CSV is empty or has no data rows.')
       const parse = (line: string) => { const cells: string[] = []; let cell = ''; let quoted = false; for (let index = 0; index < line.length; index += 1) { const char = line[index]; if (char === '"') { if (quoted && line[index + 1] === '"') { cell += '"'; index += 1 } else quoted = !quoted } else if (char === ',' && !quoted) { cells.push(cell.trim()); cell = '' } else cell += char }; cells.push(cell.trim()); return cells }
       const header = parse(lines[0]).map(cell => cell.toLowerCase())
