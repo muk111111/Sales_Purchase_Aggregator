@@ -157,17 +157,25 @@ export default function Page() {
     let savedDocumentId = documentId
 
     if (editingPurchaseDoc) {
-      // Do not use `.single()` for an UPDATE response. PostgREST returns an
-      // array for updates and can raise PGRST116 when a policy filters it out.
-      const { data: updatedDoc, error: updateError } = await supabase
+      // Keep the UPDATE separate from its verification query. Requesting a
+      // representation from PostgREST can fail with PGRST116 when RLS or a
+      // trigger changes the returned row shape, even when the update succeeds.
+      const { error: updateError } = await supabase
         .from('purchase_docs')
         .update(docPayload)
         .eq('id', editingPurchaseDoc.id)
         .eq('status', 'DRAFT')
-        .select('id')
+      if (updateError) {
+        setError(`Could not update purchase document: ${updateError.message}`)
+        return
+      }
+      const { data: updatedDoc, error: verifyError } = await supabase
+        .from('purchase_docs')
+        .select('id,status')
+        .eq('id', editingPurchaseDoc.id)
         .maybeSingle()
-      if (updateError || !updatedDoc) {
-        setError(`Could not update purchase document: ${updateError?.message || 'The draft was not found or is no longer editable.'}`)
+      if (verifyError || !updatedDoc || updatedDoc.status !== 'DRAFT') {
+        setError(`Could not update purchase document: ${verifyError?.message || 'The draft was not found or is no longer editable.'}`)
         return
       }
       savedDocumentId = updatedDoc.id
