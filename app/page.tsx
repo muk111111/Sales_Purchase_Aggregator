@@ -20,7 +20,7 @@ type SkuMasterType = 'Category' | 'Business line' | 'Sub-category' | 'Brand' | '
 type SkuMasterValue = { id: string; master_type: SkuMasterType; value: string; is_active: boolean }
 type Company = { id: string; code: string; legal_name: string; trade_name: string | null; entity_type: string; logo_url: string | null; gstin: string | null; pan: string | null; state_name: string | null; state_code: string | null; reg_address: string | null; city: string | null; pin: string | null; phone: string | null; email: string | null; fy: string; status: 'Active' | 'Inactive'; sells: boolean; buys: boolean; is_default: boolean }
   type PurchaseDoc = { id: string; number: string | null; po_number: string | null; pi_number: string | null; status: string; doc_date: string; po_date: string | null; pi_date: string | null; expected_date: string | null; vendor_id: string | null; company_id: string; purchase_type: string; vendor_invoice_no: string | null; vendor_invoice_date: string | null; ship_to: Record<string, string> | null; payment_basis: string; payment_days: number; delivery_days: number; charges_amount: number; charges_gst_pct: number; annexure_enabled: boolean; notes: string | null; cancel_reason: string | null; created_at: string }
-  type PurchaseLine = { sku_id: string | null; product_name?: string; product_code?: string; hsn?: string; description: string; qty: number; unit?: string; unit_price: number; discount_pct?: number; tax_pct: number; taxable?: number; gst_amount?: number; line_total?: number }
+  type PurchaseLine = { id?: string; sku_id: string | null; product_name?: string; product_code?: string; hsn?: string; description: string; qty: number; unit?: string; unit_price: number; discount_pct?: number; tax_pct: number; taxable?: number; gst_amount?: number; line_total?: number }
 type Section = 'Dashboards' | 'Leads' | 'Vendor Comparison' | 'Purchase Orders' | 'Purchase Invoices' | 'Sales & Invoices' | 'Commissions & Cuts' | 'Stock & Expenses' | 'Vendor Master' | 'Customer Master' | 'SKU Master' | 'SKU Configuration' | 'Companies' | 'Employees' | 'Role & Module Access'
 type UploadStatus = { fileName: string; progress: number; state: 'uploading' | 'complete' | 'error'; error?: string }
 
@@ -198,7 +198,7 @@ export default function Page() {
     }
 
     const lineQuery = editingPurchaseDoc
-      ? supabase.from('purchase_doc_lines').update(linePayload).eq('purchase_doc_id', savedDocumentId)
+      ? supabase.from('purchase_doc_lines').update(linePayload).eq('id', editingPurchaseLine?.id || '')
       : supabase.from('purchase_doc_lines').insert({ purchase_doc_id: savedDocumentId, ...linePayload })
     const { error: lineError } = await lineQuery
     if (lineError) { setError(`Purchase document saved, but line could not be updated: ${lineError.message}`); return }
@@ -225,7 +225,7 @@ export default function Page() {
       setError(message)
     } else { setSaveMessage('Purchase order submitted and numbered.'); await loadPurchaseDocs() }
   }
-  const editPurchaseDoc = async (doc: PurchaseDoc) => { if (doc.status !== 'DRAFT') return; setError(''); const { data: line, error: lineError } = await createClient().from('purchase_doc_lines').select('sku_id,description,qty,unit_price,tax_pct').eq('purchase_doc_id', doc.id).limit(1).maybeSingle(); if (lineError || !line) { setError(`Could not open purchase order for editing: ${lineError?.message || 'No line found.'}`); return } setEditingPurchaseDoc(doc); setEditingPurchaseLine(line as PurchaseLine); setShowPurchaseForm(true) }
+  const editPurchaseDoc = async (doc: PurchaseDoc) => { if (doc.status !== 'DRAFT') return; setError(''); const { data: line, error: lineError } = await createClient().from('purchase_doc_lines').select('id,sku_id,product_name,product_code,hsn,description,qty,unit,unit_price,discount_pct,tax_pct,taxable,gst_amount,line_total').eq('purchase_doc_id', doc.id).limit(1).maybeSingle(); if (lineError || !line) { setError(`Could not open purchase order for editing: ${lineError?.message || 'No line found.'}`); return } setEditingPurchaseDoc(doc); setEditingPurchaseLine(line as PurchaseLine); setShowPurchaseForm(true) }
   const cancelPurchaseDoc = async (id: string) => { const reason = window.prompt('Cancel reason:\n1. Vendor unavailable\n2. Price changed\n3. Duplicate PO\n4. Requirement withdrawn\n5. Other\n\nEnter a reason or number:'); if (!reason?.trim()) return; const reasons: Record<string, string> = { '1': 'Vendor unavailable', '2': 'Price changed', '3': 'Duplicate PO', '4': 'Requirement withdrawn' }; const cancelReason = reasons[reason.trim()] || reason.trim(); const { error: cancelError } = await createClient().rpc('cancel_purchase_doc', { p_doc_id: id, p_reason: cancelReason }); if (cancelError) setError(`Could not cancel purchase order: ${cancelError.message}`); else { setSaveMessage('Purchase order cancelled.'); setShowPurchaseForm(false); setEditingPurchaseDoc(null); setEditingPurchaseLine(null); await loadPurchaseDocs() } }
   const saveCompany = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setError(''); setSaveMessage('')
