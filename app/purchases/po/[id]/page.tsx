@@ -48,23 +48,26 @@ export default function PurchaseOrderPage({ params }: { params: Promise<{ id: st
             {po.partner_name ? ` · Partner ${po.partner_name}` : ''}
           </p>
         </div>
-        {canWrite && (
-          <div className="flex flex-wrap gap-2">
-            <Link href={`/purchases/po/new?from=${po.id}`} className="flex min-h-11 items-center rounded-lg border border-[#dedbd2] bg-white px-4 text-sm font-semibold">
-              Duplicate
-            </Link>
-            {po.status === 'CREATED' && (
-              <>
-                <button type="button" onClick={() => setCancelling(true)} className="min-h-11 rounded-lg border border-[#f0c4bd] bg-white px-4 text-sm font-semibold text-[#a33b2b]">
-                  Cancel PO
-                </button>
-                <Link href={`/purchases/po/${po.id}/edit`} className="flex min-h-11 items-center rounded-lg bg-[#142033] px-5 text-sm font-bold text-white">
-                  Edit
-                </Link>
-              </>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canWrite && po.status === 'CREATED' && (
+            <>
+              <button type="button" onClick={() => setCancelling(true)} className="min-h-11 rounded-lg border border-[#f0c4bd] bg-white px-4 text-sm font-semibold text-[#a33b2b]">
+                Cancel PO
+              </button>
+              <Link href={`/purchases/po/${po.id}/edit`} className="flex min-h-11 items-center rounded-lg bg-[#142033] px-5 text-sm font-bold text-white">
+                Edit
+              </Link>
+            </>
+          )}
+          <Link
+            href={`/po-print/${po.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-11 items-center rounded-lg border border-[#dedbd2] bg-white px-4 text-sm font-semibold"
+          >
+            PDF
+          </Link>
+        </div>
       </div>
 
       {po.status === 'CANCELLED' && (
