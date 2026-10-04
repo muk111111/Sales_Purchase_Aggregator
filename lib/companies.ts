@@ -104,6 +104,7 @@ export const FIELD_LABELS: Record<string, string> = {
   phone: 'phone',
   email: 'email',
   signatory_name: 'authorised signatory',
+  default_bank_account: 'a default bank account',
 }
 
 export const INDIAN_STATES: { code: string; name: string }[] = [
