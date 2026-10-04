@@ -784,7 +784,7 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
                         hint={
                           line.hsn && !hsnLooksValid(line.hsn) ? (
                             <span className="flex items-center gap-1 text-[#9a6206]">
-                              <TriangleAlert size={12} aria-hidden="true" /> Usually 4, 6 or 8 digits
+                              <TriangleAlert size={12} aria-hidden="true" /> HSN must be 4 to 8 digits
                             </span>
                           ) : undefined
                         }
