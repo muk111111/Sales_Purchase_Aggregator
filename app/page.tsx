@@ -161,7 +161,7 @@ export default function Page() {
     setLoading(false)
   }
   useEffect(() => { if (section === 'Companies') window.location.assign('/companies') }, [section])
-  useEffect(() => { if (section === 'Purchase Orders' || section === 'Purchase Invoices') { loadPurchaseDocs(); if (!vendors.length) loadVendors(); if (!companies.length) loadCompanies(); if (!skus.length) loadSkus() } }, [section])
+  useEffect(() => { if (section === 'Purchase Orders' || section === 'Purchase Invoices') window.location.assign('/purchases/po') }, [section])
   const loadPurchaseDocs = async () => {
     setLoading(true); setError('')
     const { data, error: queryError } = await createClient().from('purchase_docs').select('id,number,po_number,pi_number,status,doc_date,po_date,pi_date,expected_date,vendor_id,company_id,purchase_type,vendor_invoice_no,vendor_invoice_date,ship_to,payment_basis,payment_days,delivery_days,charges_amount,charges_gst_pct,annexure_enabled,notes,cancel_reason,created_at').order('created_at', { ascending: false })
