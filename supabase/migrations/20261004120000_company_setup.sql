@@ -7,22 +7,35 @@ begin;
 create schema if not exists private;
 
 -- ---------------------------------------------------------------------------
--- 1. Role helpers
---    employees.role values are 'Owner','Admin','Director',... (no OWNER/PARTNER/VIEWER),
---    so the OWNER tier maps to Owner + Admin + Director. Every other active employee is read-only.
+-- 1. Role tiers. employees.role holds job titles ('Admin', 'Director', 'Ops Leads', ...),
+--    which never matched the old OWNER/PARTNER/VIEWER checks. app_role() maps them:
+--      OWNER   = Owner, Admin, Director
+--      PARTNER = Partner, Sales, Purchase, Accounts
+--      VIEWER  = every other active employee
+--      NULL    = not an active employee
 -- ---------------------------------------------------------------------------
-create or replace function private.is_company_owner()
-returns boolean
+create or replace function public.app_role()
+returns text
 language sql stable security definer
 set search_path = ''
 as $$
-  select exists (
-    select 1 from public.employees e
-    where e.id = (select auth.uid())
-      and e.is_active
-      and e.role in ('Owner', 'OWNER', 'Admin', 'Director')
-  );
+  select case
+    when lower(btrim(e.role)) in ('owner', 'admin', 'director') then 'OWNER'
+    when lower(btrim(e.role)) in ('partner', 'sales', 'purchase', 'accounts') then 'PARTNER'
+    else 'VIEWER'
+  end
+  from public.employees e
+  where e.id = (select auth.uid()) and e.is_active;
 $$;
+
+revoke execute on function public.app_role() from public, anon;
+grant execute on function public.app_role() to authenticated;
+
+create or replace function private.is_company_owner()
+returns boolean
+language sql stable
+set search_path = ''
+as $$ select coalesce(public.app_role() = 'OWNER', false) $$;
 
 revoke execute on function private.is_company_owner() from public, anon;
 grant usage on schema private to authenticated;
@@ -80,8 +93,14 @@ alter table public.companies
 -- Backfill existing rows (C01 Supply360 Solution PVT LTD. -> SS, C02 Vensun Group -> VG)
 update public.companies set abbr = public.company_abbr(legal_name) where abbr is null;
 
+-- Entity type is chosen by the owner in the UI ("Add entity type"); never guessed.
+-- Unrecognised legacy values become NULL; recognised ones are kept.
+alter table public.companies
+  alter column entity_type drop not null,
+  alter column entity_type drop default;
+
 update public.companies
-set entity_type = 'Private Limited'
+set entity_type = null
 where entity_type not in ('Proprietorship', 'Partnership', 'LLP', 'Private Limited', 'OPC');
 
 update public.companies
@@ -89,20 +108,16 @@ set gstin = nullif(upper(btrim(gstin)), ''),
     pan   = nullif(upper(btrim(pan)), ''),
     email = nullif(lower(btrim(email)), '');
 
--- Exactly one default company: promote the oldest active one if none is set
-update public.companies
-set is_default = true
-where id = (select id from public.companies where status = 'Active' order by created_at, code limit 1)
-  and not exists (select 1 from public.companies where is_default);
+-- Vensun Group (VG) is the default company
+update public.companies set is_default = (abbr = 'VG');
 
 alter table public.companies
-  alter column abbr set not null,
-  alter column entity_type drop default;
+  alter column abbr set not null;
 
 -- Format rules (NOT VALID first, validated below so legacy rows can't abort the migration)
 alter table public.companies
   add constraint companies_abbr_format        check (abbr ~ '^[A-Z0-9]{2,4}$') not valid,
-  add constraint companies_entity_type_check  check (entity_type in ('Proprietorship', 'Partnership', 'LLP', 'Private Limited', 'OPC')) not valid,
+  add constraint companies_entity_type_check  check (entity_type is null or entity_type in ('Proprietorship', 'Partnership', 'LLP', 'Private Limited', 'OPC')) not valid,
   add constraint companies_gst_type_check     check (gst_type in ('Regular', 'Composition', 'Unregistered')) not valid,
   add constraint companies_gstin_format       check (gstin is null or gstin ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$') not valid,
   add constraint companies_pan_format         check (pan is null or pan ~ '^[A-Z]{5}[0-9]{4}[A-Z]$') not valid,
@@ -122,8 +137,8 @@ create unique index if not exists companies_abbr_key on public.companies (abbr);
 create unique index if not exists companies_gstin_key on public.companies (gstin) where gstin is not null;
 create unique index if not exists companies_single_default on public.companies ((true)) where is_default;
 
--- Required fields for an Active company. Exposed to PostgREST as a computed field
--- (select=*,company_missing_fields) so the UI can render "Add GSTIN" links.
+-- Recommended fields, shown as warnings only (an Active company may be saved without them).
+-- Exposed to PostgREST as a computed field (select=*,company_missing_fields).
 create or replace function public.company_missing_fields(c public.companies)
 returns text[]
 language sql stable
@@ -132,6 +147,7 @@ as $$
   select array_remove(array[
     case when nullif(btrim(c.code), '') is null then 'code' end,
     case when nullif(btrim(c.legal_name), '') is null then 'legal_name' end,
+    case when c.entity_type is null then 'entity_type' end,
     case when c.entity_type in ('LLP', 'Private Limited', 'OPC') and c.cin is null then 'cin' end,
     case when c.gst_type <> 'Unregistered' and c.gstin is null then 'gstin' end,
     case when c.pan is null then 'pan' end,
@@ -150,15 +166,7 @@ returns trigger
 language plpgsql security definer
 set search_path = ''
 as $$
-declare
-  v_flags_only boolean := false;
-  v_missing text[];
 begin
-  if tg_op = 'UPDATE' then
-    v_flags_only := (to_jsonb(new) - array['is_default', 'updated_at', 'updated_by'])
-                  = (to_jsonb(old) - array['is_default', 'updated_at', 'updated_by']);
-  end if;
-
   new.code       := upper(btrim(new.code));
   new.legal_name := btrim(new.legal_name);
   new.gstin      := nullif(upper(btrim(new.gstin)), '');
@@ -183,13 +191,6 @@ begin
     end if;
     if old.is_default and not new.is_default and pg_trigger_depth() = 1 then
       raise exception 'Make another company the default instead of clearing this one' using errcode = '23514';
-    end if;
-  end if;
-
-  if new.status = 'Active' and not v_flags_only then
-    v_missing := public.company_missing_fields(new);
-    if cardinality(v_missing) > 0 then
-      raise exception 'Missing required company details: %', array_to_string(v_missing, ', ') using errcode = '23514';
     end if;
   end if;
 
@@ -410,6 +411,27 @@ begin
 end;
 $$;
 
+-- Details a company must have before it can issue a PO, PI or SI.
+-- Exposed as a computed field (select=*,company_document_blockers) for the UI.
+create or replace function public.company_document_blockers(c public.companies)
+returns text[]
+language sql stable security definer
+set search_path = ''
+as $$
+  select array_remove(array[
+    case when c.gstin is null then 'GSTIN' end,
+    case when c.pan is null then 'PAN' end,
+    case when nullif(btrim(c.reg_address), '') is null then 'registered address' end,
+    case when c.state_code is null then 'state code' end,
+    case when not exists (
+      select 1 from public.company_bank_accounts b where b.company_id = c.id and b.is_default
+    ) then 'default bank account' end
+  ], null);
+$$;
+
+revoke execute on function public.company_document_blockers(public.companies) from public, anon;
+grant execute on function public.company_document_blockers(public.companies) to authenticated;
+
 -- The numbering function. The row lock serialises concurrent callers per (company, doc type);
 -- the increment commits or rolls back with the caller's transaction, and nothing ever decrements,
 -- so cancelled numbers are never reissued.
@@ -420,18 +442,27 @@ set search_path = ''
 as $$
 declare
   v_series public.document_series%rowtype;
-  v_status text;
+  v_company public.companies%rowtype;
+  v_blockers text[];
 begin
   if p_doc_type is null or p_doc_type not in ('PO', 'PI', 'SO', 'SI', 'CN') then
     raise exception 'Unknown document type %', p_doc_type using errcode = '22023';
   end if;
 
-  select status into v_status from public.companies where id = p_company_id;
+  select * into v_company from public.companies where id = p_company_id;
   if not found then
     raise exception 'Company not found' using errcode = 'P0002';
   end if;
-  if v_status <> 'Active' then
+  if v_company.status <> 'Active' then
     raise exception 'Company is inactive; documents cannot be numbered' using errcode = '23514';
+  end if;
+
+  if p_doc_type in ('PO', 'PI', 'SI') then
+    v_blockers := public.company_document_blockers(v_company);
+    if cardinality(v_blockers) > 0 then
+      raise exception 'Cannot create % for %: add %', p_doc_type, v_company.legal_name, array_to_string(v_blockers, ', ')
+        using errcode = '23514', hint = 'Open Companies > ' || v_company.legal_name || ' to complete these details.';
+    end if;
   end if;
 
   select * into v_series
@@ -561,7 +592,7 @@ declare
   v_doc public.purchase_docs%rowtype;
   v_locked date;
 begin
-  if public.current_employee_role() not in ('Owner', 'OWNER', 'PARTNER', 'Admin', 'Director') then
+  if coalesce(public.app_role(), '') not in ('OWNER', 'PARTNER') then
     raise exception 'You are not allowed to invoice purchase orders' using errcode = '42501';
   end if;
 
@@ -743,19 +774,43 @@ create policy company_bank_update on public.company_bank_accounts for update to 
 create policy company_bank_delete on public.company_bank_accounts for delete to authenticated
   using ((select private.is_company_owner()));
 
+-- Full account numbers are not selectable by clients; everyone sees account_no_last4.
+-- Owners fetch the full number through company_bank_account_number() when editing.
+revoke select on public.company_bank_accounts from anon, authenticated;
+grant select (id, company_id, account_name, bank_name, branch, account_no_last4, ifsc, upi_id,
+              is_default, created_by, created_at, updated_at)
+  on public.company_bank_accounts to authenticated;
+
+create or replace function public.company_bank_account_number(p_account_id uuid)
+returns text
+language plpgsql stable security definer
+set search_path = ''
+as $$
+begin
+  if coalesce(public.app_role(), '') <> 'OWNER' then
+    raise exception 'Only owners can view full account numbers' using errcode = '42501';
+  end if;
+  return (select account_no from public.company_bank_accounts where id = p_account_id);
+end;
+$$;
+
+revoke execute on function public.company_bank_account_number(uuid) from public, anon;
+grant execute on function public.company_bank_account_number(uuid) to authenticated;
+
 -- Series: read-only through the API; changes only via set_document_series_start / next_document_number
 drop policy if exists document_series_select on public.document_series;
 create policy document_series_select on public.document_series for select to authenticated
   using ((select private.is_active_employee()));
 
--- Company locations: OWNER tier only. Customer locations keep the existing employee access.
+-- Company locations: OWNER or PARTNER may add (new ship-to from the PO screen);
+-- only OWNER edits or deletes. Customer locations keep the existing employee access.
 drop policy if exists delivery_locations_employee_access on public.delivery_locations;
 create policy delivery_locations_select on public.delivery_locations for select to authenticated
   using ((select private.is_active_employee()));
 create policy delivery_locations_insert on public.delivery_locations for insert to authenticated
   with check (
     (owner_type = 'CUSTOMER' and (select private.is_active_employee()))
-    or (owner_type = 'COMPANY' and (select private.is_company_owner()))
+    or (owner_type = 'COMPANY' and (select public.app_role()) in ('OWNER', 'PARTNER'))
   );
 create policy delivery_locations_update on public.delivery_locations for update to authenticated
   using (
@@ -771,6 +826,71 @@ create policy delivery_locations_delete on public.delivery_locations for delete 
     (owner_type = 'CUSTOMER' and (select private.is_active_employee()))
     or (owner_type = 'COMPANY' and (select private.is_company_owner()))
   );
+
+-- ---------------------------------------------------------------------------
+-- 10b. Purchase / payment / audit policies and RPCs moved onto app_role()
+-- ---------------------------------------------------------------------------
+drop policy if exists purchase_docs_select on public.purchase_docs;
+drop policy if exists purchase_docs_insert on public.purchase_docs;
+drop policy if exists purchase_docs_update on public.purchase_docs;
+drop policy if exists purchase_docs_delete on public.purchase_docs;
+create policy purchase_docs_select on public.purchase_docs for select to authenticated
+  using ((select public.app_role()) is not null);
+create policy purchase_docs_insert on public.purchase_docs for insert to authenticated
+  with check (created_by = (select auth.uid()) and (select public.app_role()) in ('OWNER', 'PARTNER'));
+create policy purchase_docs_update on public.purchase_docs for update to authenticated
+  using (status = 'DRAFT' and (select public.app_role()) in ('OWNER', 'PARTNER'))
+  with check ((select public.app_role()) in ('OWNER', 'PARTNER'));
+create policy purchase_docs_delete on public.purchase_docs for delete to authenticated
+  using (created_by = (select auth.uid()) and status = 'DRAFT' and (select public.app_role()) in ('OWNER', 'PARTNER'));
+
+drop policy if exists purchase_doc_lines_write on public.purchase_doc_lines;
+create policy purchase_doc_lines_write on public.purchase_doc_lines for all to authenticated
+  using (
+    exists (select 1 from public.purchase_docs d where d.id = purchase_doc_lines.purchase_doc_id and d.status = 'DRAFT')
+    and (select public.app_role()) in ('OWNER', 'PARTNER')
+  )
+  with check (
+    exists (select 1 from public.purchase_docs d where d.id = purchase_doc_lines.purchase_doc_id and d.status = 'DRAFT')
+    and (select public.app_role()) in ('OWNER', 'PARTNER')
+  );
+
+drop policy if exists payments_select on public.payments;
+drop policy if exists payments_write on public.payments;
+create policy payments_select on public.payments for select to authenticated
+  using ((select public.app_role()) is not null);
+create policy payments_write on public.payments for all to authenticated
+  using ((select public.app_role()) = 'OWNER')
+  with check ((select public.app_role()) = 'OWNER');
+
+drop policy if exists audit_log_select on public.audit_log;
+create policy audit_log_select on public.audit_log for select to authenticated
+  using ((select public.app_role()) is not null);
+
+create or replace function public.revise_purchase_doc(p_doc_id uuid)
+returns public.purchase_docs
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  result public.purchase_docs%rowtype;
+begin
+  update public.purchase_docs
+  set status = 'REVISED', updated_at = now(), updated_by = auth.uid()
+  where id = p_doc_id
+    and status = 'SUBMITTED'
+    and (
+      public.app_role() = 'OWNER'
+      or (public.app_role() = 'PARTNER' and created_by = (select auth.uid()))
+    )
+  returning * into result;
+  if not found then
+    raise exception 'Only submitted documents you created (or any, for owners) can be revised' using errcode = '42501';
+  end if;
+  insert into public.audit_log (entity_type, entity_id, action) values ('purchase_doc', p_doc_id, 'REVISED');
+  return result;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 11. Storage: private bucket "company-assets", PNG/JPG/SVG, max 1 MB.

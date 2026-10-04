@@ -160,7 +160,7 @@ export default function Page() {
     if (queryError) setError(`Could not load companies: ${queryError.message}`); else setCompanies((data ?? []) as Company[])
     setLoading(false)
   }
-  useEffect(() => { if (section === 'Companies') loadCompanies() }, [section])
+  useEffect(() => { if (section === 'Companies') window.location.assign('/companies') }, [section])
   useEffect(() => { if (section === 'Purchase Orders' || section === 'Purchase Invoices') { loadPurchaseDocs(); if (!vendors.length) loadVendors(); if (!companies.length) loadCompanies(); if (!skus.length) loadSkus() } }, [section])
   const loadPurchaseDocs = async () => {
     setLoading(true); setError('')
@@ -263,25 +263,9 @@ export default function Page() {
     setShowPurchaseForm(false); setEditingPurchaseDoc(null); setEditingPurchaseLines([]); setSaveMessage(editingPurchaseDoc ? 'Purchase order updated.' : 'Purchase order created.'); await loadPurchaseDocs()
   }
   const submitPurchaseDoc = async (id: string) => {
-    const supabase = createClient()
-    let { error: submitError } = await supabase.rpc('submit_purchase_doc', { p_doc_id: id })
-    if (submitError && submitError.message.toLowerCase().includes('document series')) {
-      const { data: document } = await supabase.from('purchase_docs').select('company_id').eq('id', id).maybeSingle()
-      if (document?.company_id) {
-        const { data: existingSeries, error: seriesReadError } = await supabase.from('document_series').select('id,prefix,next_number,padding').eq('company_id', document.company_id).eq('doc_type', 'PO').order('id', { ascending: true }).limit(1).maybeSingle()
-        if (!seriesReadError && !existingSeries) {
-          const { error: seriesCreateError } = await supabase.from('document_series').insert({ company_id: document.company_id, doc_type: 'PO', prefix: 'P', next_number: 300419, padding: 7, reset_each_fy: false })
-          if (seriesCreateError && !seriesCreateError.message.toLowerCase().includes('duplicate')) {
-            submitError = seriesCreateError
-          }
-        }
-        if (!seriesReadError) ({ error: submitError } = await supabase.rpc('submit_purchase_doc', { p_doc_id: id }))
-      }
-    }
-    if (submitError) {
-      const message = submitError.message.toLowerCase().includes('document series') ? 'Could not submit purchase order: configure a PO document series for this company in the document-series setup before submitting. The default PO series starts at P0300419.' : `Could not submit purchase order: ${submitError.message}`
-      setError(message)
-    } else { setSaveMessage('Purchase order submitted and numbered.'); await loadPurchaseDocs() }
+    const { error: submitError } = await createClient().rpc('submit_purchase_doc', { p_doc_id: id })
+    if (submitError) setError(`Could not submit purchase order: ${submitError.message}`)
+    else { setSaveMessage('Purchase order submitted and numbered.'); await loadPurchaseDocs() }
   }
   const editPurchaseDoc = async (doc: PurchaseDoc) => { if (doc.status !== 'DRAFT') return; setError(''); const { data: lines, error: lineError } = await createClient().from('purchase_doc_lines').select('id,sku_id,product_name,product_code,hsn,description,qty,unit,unit_price,discount_pct,tax_pct,taxable,gst_amount,line_total').eq('purchase_doc_id', doc.id).order('id'); if (lineError || !lines?.length) { setError(`Could not open purchase order for editing: ${lineError?.message || 'No lines found.'}`); return } setEditingPurchaseDoc(doc); setEditingPurchaseLines(lines as PurchaseLine[]); setShowPurchaseForm(true) }
   const cancelPurchaseDoc = async (id: string) => { const reason = window.prompt('Cancel reason:\n1. Vendor unavailable\n2. Price changed\n3. Duplicate PO\n4. Requirement withdrawn\n5. Other\n\nEnter a reason or number:'); if (!reason?.trim()) return; const reasons: Record<string, string> = { '1': 'Vendor unavailable', '2': 'Price changed', '3': 'Duplicate PO', '4': 'Requirement withdrawn' }; const cancelReason = reasons[reason.trim()] || reason.trim(); const { error: cancelError } = await createClient().rpc('cancel_purchase_doc', { p_doc_id: id, p_reason: cancelReason }); if (cancelError) setError(`Could not cancel purchase order: ${cancelError.message}`); else { setSaveMessage('Purchase order cancelled.'); setShowPurchaseForm(false); setEditingPurchaseDoc(null); setEditingPurchaseLines([]); await loadPurchaseDocs() } }
