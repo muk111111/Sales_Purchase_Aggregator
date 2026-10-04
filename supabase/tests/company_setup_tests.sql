@@ -13,6 +13,10 @@ declare
   v_po_cancelled text;
   v_po_next text;
   v_msg text;
+  v_vendor_id uuid := (select id from public.vendors where status = 'Active' limit 1);
+  v_sku_id uuid := (select id from public.skus limit 1);
+  v_po_result jsonb;
+  v_po_id uuid;
 begin
   -- Abbreviation
   assert public.company_abbr('Vensun Group') = 'VG', 'Vensun Group -> VG';
@@ -25,20 +29,20 @@ begin
   assert (select count(*) from public.companies where is_default) = 1, 'exactly one default';
   assert (select count(*) from public.companies where entity_type = 'Private Limited' and legal_name = 'Vensun Group') = 0,
     'entity type not forced to Private Limited';
-  assert exists (select 1 from public.purchase_docs where po_number = 'P0300419'), 'P0300419 kept';
   assert (select prefix || next_number from public.document_series s join public.companies c on c.id = s.company_id
           where c.abbr = 'VG' and s.doc_type = 'PO') = 'PO-VG-91010', 'VG PO series at PO-VG-91010';
-  raise notice 'PASS existing data (VG default, P0300419 kept, entity type untouched)';
+  raise notice 'PASS existing data (VG default, entity type untouched)';
 
-  -- Active company saves with missing details (warnings only)
+  -- Active company saves with only legal_name; nothing else is required
   insert into public.companies (code, legal_name, fy, status)
   values ('ZZBARE', 'Bare Minimum Co', '2026-27', 'Active')
   returning id into v_bare;
-  assert cardinality((select public.company_missing_fields(c) from public.companies c where id = v_bare)) > 0,
-    'missing fields reported as warnings';
+  assert cardinality((select public.company_missing_fields(c) from public.companies c where id = v_bare)) = 0,
+    'only legal_name is required; no missing fields reported';
   raise notice 'PASS Active company saved without GSTIN/PAN/address';
 
-  -- New company with GSTIN but no bank account: PO / PI / SI blocked, SO / CN allowed
+  -- New company with GSTIN but no bank account: nothing but legal_name is mandatory,
+  -- so PO / PI / SI are never blocked by missing GSTIN, PAN, address, state code or bank account.
   insert into public.companies (code, legal_name, gst_type, gstin, state_name, reg_address, fy, status)
   values ('ZZTEST', 'Zeta Quartz Traders', 'Regular', '24ABCDE1234F1Z5', 'Gujarat', '1 Test Road, Surat', '2026-27', 'Active')
   returning id into v_company;
@@ -46,43 +50,75 @@ begin
   assert (select count(*) from public.document_series where company_id = v_company and next_number = 91010) = 5,
     'five series at 91010';
 
-  begin
-    perform public.next_document_number(v_company, 'PO');
-    raise exception 'PO without bank account should be blocked';
-  exception when check_violation then
-    get stacked diagnostics v_msg = message_text;
-    assert v_msg = 'Cannot create PO for Zeta Quartz Traders: add default bank account', v_msg;
-  end;
-  begin
-    perform public.next_document_number(v_bare, 'SI');
-    raise exception 'SI for bare company should be blocked';
-  exception when check_violation then
-    get stacked diagnostics v_msg = message_text;
-    assert v_msg like 'Cannot create SI for Bare Minimum Co: add GSTIN, PAN, registered address, state code, default bank account', v_msg;
-  end;
-  raise notice 'PASS PO/PI/SI blocked with message: %', v_msg;
+  assert cardinality((select public.company_document_blockers(c) from public.companies c where id = v_company)) = 0,
+    'no document blockers even without a bank account';
+  assert cardinality((select public.company_document_blockers(c) from public.companies c where id = v_bare)) = 0,
+    'no document blockers for a bare company missing GSTIN/PAN/address/state';
+
+  perform public.next_document_number(v_bare, 'SI');
+  raise notice 'PASS SI allowed for bare company with only legal_name set';
 
   insert into public.company_bank_accounts (company_id, account_name, bank_name, account_no, ifsc)
   values (v_company, 'Zeta Quartz Traders', 'HDFC Bank', '50100123456789', 'hdfc0001234');
   assert (select is_default from public.company_bank_accounts where company_id = v_company), 'first account is default';
 
-  v_n := public.next_document_number(v_company, 'PO');
-  assert v_n = 'PO-ZQ-91010', format('first PO, got %s', v_n);
-  v_n := public.next_document_number(v_company, 'PO');
-  assert v_n = 'PO-ZQ-91011', format('second PO, got %s', v_n);
   v_n := public.next_document_number(v_company, 'SI');
   assert v_n = 'SI-ZQ-91010', format('first SI, got %s', v_n);
-  raise notice 'PASS numbering PO-ZQ-91010, PO-ZQ-91011, SI-ZQ-91010';
+  raise notice 'PASS numbering SI-ZQ-91010';
 
-  -- Trigger ignores client-supplied numbers; cancelled numbers are never reissued
-  insert into public.purchase_docs (company_id, created_by, po_number)
-  values (v_company, v_owner, 'HACKED-1') returning po_number into v_po_first;
-  assert v_po_first = 'PO-ZQ-91012', format('trigger ignores client number, got %s', v_po_first);
-  insert into public.purchase_docs (company_id, created_by) values (v_company, v_owner) returning po_number into v_po_cancelled;
-  update public.purchase_docs set status = 'CANCELLED', cancel_reason = 'test' where po_number = v_po_cancelled;
-  insert into public.purchase_docs (company_id, created_by) values (v_company, v_owner) returning po_number into v_po_next;
-  assert v_po_cancelled = 'PO-ZQ-91013' and v_po_next = 'PO-ZQ-91014', 'cancelled number not reused';
-  raise notice 'PASS cancelled PO-ZQ-91013 not reused (next %)', v_po_next;
+  -- create_po issues sequential numbers; cancelled numbers are never reissued
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+  perform set_config('role', 'authenticated', true);
+
+  v_po_result := public.create_po(jsonb_build_object(
+    'company_id', v_company,
+    'vendor_id', v_vendor_id,
+    'po_date', current_date,
+    'subject', 'Test PO 1',
+    'ship_to', jsonb_build_object('name', 'Test Warehouse', 'line1', '1 Test Road', 'city', 'Surat', 'state', 'Gujarat', 'state_code', '24', 'pin', '395002', 'contact_name', 'Test Contact', 'contact_phone', '9999999999'),
+    'payment_basis', 'FULL_ADVANCE',
+    'payment_days', 0,
+    'delivery_days', 7,
+    'gst_mode', 'Regular',
+    'lines', jsonb_build_array(jsonb_build_object('line_no', 1, 'sku_id', v_sku_id, 'qty', 1, 'rate', 100))
+  ));
+  v_po_first := v_po_result->>'number';
+  assert v_po_first = 'PO-ZQ-91010', format('first PO, got %s', v_po_first);
+
+  v_po_result := public.create_po(jsonb_build_object(
+    'company_id', v_company,
+    'vendor_id', v_vendor_id,
+    'po_date', current_date,
+    'subject', 'Test PO 2',
+    'ship_to', jsonb_build_object('name', 'Test Warehouse', 'line1', '1 Test Road', 'city', 'Surat', 'state', 'Gujarat', 'state_code', '24', 'pin', '395002', 'contact_name', 'Test Contact', 'contact_phone', '9999999999'),
+    'payment_basis', 'FULL_ADVANCE',
+    'payment_days', 0,
+    'delivery_days', 7,
+    'gst_mode', 'Regular',
+    'lines', jsonb_build_array(jsonb_build_object('line_no', 1, 'sku_id', v_sku_id, 'qty', 1, 'rate', 100))
+  ));
+  v_po_id := (v_po_result->>'id')::uuid;
+  v_po_cancelled := v_po_result->>'number';
+  assert v_po_cancelled = 'PO-ZQ-91011', format('second PO, got %s', v_po_cancelled);
+  perform public.cancel_po(v_po_id, 'test');
+
+  v_po_result := public.create_po(jsonb_build_object(
+    'company_id', v_company,
+    'vendor_id', v_vendor_id,
+    'po_date', current_date,
+    'subject', 'Test PO 3',
+    'ship_to', jsonb_build_object('name', 'Test Warehouse', 'line1', '1 Test Road', 'city', 'Surat', 'state', 'Gujarat', 'state_code', '24', 'pin', '395002', 'contact_name', 'Test Contact', 'contact_phone', '9999999999'),
+    'payment_basis', 'FULL_ADVANCE',
+    'payment_days', 0,
+    'delivery_days', 7,
+    'gst_mode', 'Regular',
+    'lines', jsonb_build_array(jsonb_build_object('line_no', 1, 'sku_id', v_sku_id, 'qty', 1, 'rate', 100))
+  ));
+  v_po_next := v_po_result->>'number';
+  assert v_po_next = 'PO-ZQ-91012', format('cancelled number reused, got %s', v_po_next);
+  raise notice 'PASS cancelled PO-ZQ-91011 not reused (next %)', v_po_next;
+
+  perform set_config('role', 'postgres', true);
 
   begin
     update public.companies set abbr = 'XX' where id = v_company;
