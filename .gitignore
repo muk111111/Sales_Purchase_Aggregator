@@ -8,3 +8,5 @@ node_modules
 .next/
 .env*.local
 .DS_Store
+# Local data exports (business data, keep out of git)
+/backups/
