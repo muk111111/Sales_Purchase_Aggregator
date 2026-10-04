@@ -15,7 +15,6 @@ import {
   fetchTermsTemplates,
   fetchVendors,
   formatInr,
-  GST_RATES,
   gstModeFor,
   hsnLooksValid,
   PAYMENT_BASIS_OPTIONS,
@@ -27,7 +26,6 @@ import {
   type ShipTo,
   type Sku,
 } from '@/lib/purchases'
-import { PoDocument } from '@/components/purchases/po-document'
 
 type DraftLine = {
   key: string
@@ -280,7 +278,6 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
   const [draft, setDraft] = useState<Draft>(() => restored?.draft ?? (source ? draftFromPo(source, mode === 'duplicate') : blankDraft()))
   const [showRestored, setShowRestored] = useState(Boolean(restored))
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [view, setView] = useState<'form' | 'preview'>('form')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const dirty = useRef(Boolean(restored))
@@ -402,50 +399,12 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
       window.localStorage.removeItem(storageKey)
       dirty.current = false
       await Promise.all([mutate('po-list'), mutate(['po', result.id])])
-      router.push(`/purchases/po/${result.id}`)
+      router.push(mode === 'edit' ? `/purchases/po/${result.id}` : '/purchases/po')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save the PO')
       setSaving(false)
     }
   }
-
-  const preview = (
-    <PoDocument
-      data={{
-        number: mode === 'edit' ? source?.number ?? null : null,
-        po_date: draft.po_date,
-        subject: draft.subject,
-        intro_text: draft.intro_text || null,
-        company,
-        vendor,
-        vendor_quotation_ref: draft.vendor_quotation_ref || null,
-        purchase_type: draft.purchase_type,
-        linked_sales_invoice_no: draft.linked_sales_invoice_no || null,
-        ship_to: draft.ship_to,
-        lines: computedLines.map(({ line, sku, taxable, gstAmount, lineTotal }) => ({
-          sku_code: sku?.code ?? '',
-          item_name: line.item_name,
-          description: line.description && line.description !== line.item_name ? line.description : null,
-          hsn: line.hsn,
-          qty: num(line.qty),
-          unit: line.unit,
-          rate: num(line.rate),
-          discount_pct: num(line.discount_pct),
-          taxable,
-          gst_pct: num(line.gst_pct),
-          gst_amount: gstAmount,
-          line_total: lineTotal,
-        })),
-        totals,
-        gst_mode: gstMode,
-        payment_terms_text: termsText,
-        delivery_days: deliveryDays,
-        annexure_enabled: draft.annexure_enabled,
-        annexure_heading: draft.annexure_heading,
-        annexure_terms: annexureTerms.filter(term => term.trim()),
-      }}
-    />
-  )
 
   return (
     <div className="flex flex-col gap-5">
@@ -466,23 +425,8 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
         </div>
       )}
 
-      <div role="tablist" aria-label="Form or preview" className="flex w-fit rounded-lg border border-[#dedbd2] bg-white p-1 xl:hidden">
-        {(['form', 'preview'] as const).map(option => (
-          <button
-            key={option}
-            type="button"
-            role="tab"
-            aria-selected={view === option}
-            onClick={() => setView(option)}
-            className={`min-h-9 rounded-md px-4 text-sm font-semibold capitalize ${view === option ? 'bg-[#142033] text-white' : 'text-[#667078]'}`}
-          >
-            {option === 'form' ? 'Edit' : 'Preview'}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
-        <form onSubmit={handleSubmit} className={`flex-col gap-5 ${view === 'form' ? 'flex' : 'hidden xl:flex'}`}>
+      <div className="mx-auto w-full max-w-3xl">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <fieldset disabled={saving} className="flex flex-col gap-5">
             <Section title="Order">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -800,8 +744,8 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
                       <Field label="Qty">
                         <input required type="number" min="0.001" step="any" value={line.qty} onChange={event => updateLine(line.key, { qty: event.target.value })} className={`${inputClass} font-mono`} />
                       </Field>
-                      <Field label="Unit">
-                        <input required value={line.unit} onChange={event => updateLine(line.key, { unit: event.target.value })} className={inputClass} />
+                  <Field label="Unit">
+                    <input value={line.unit} onChange={event => updateLine(line.key, { unit: event.target.value })} className={inputClass} />
                       </Field>
                       <Field label="Rate (ex-tax)">
                         <input required type="number" min="0" step="0.01" value={line.rate} onChange={event => updateLine(line.key, { rate: event.target.value })} className={`${inputClass} font-mono`} />
@@ -809,14 +753,8 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
                       <Field label="Disc %">
                         <input type="number" min="0" max="100" step="0.01" value={line.discount_pct} onChange={event => updateLine(line.key, { discount_pct: event.target.value })} className={`${inputClass} font-mono`} />
                       </Field>
-                      <Field label="GST %">
-                        <select value={line.gst_pct} onChange={event => updateLine(line.key, { gst_pct: event.target.value })} className={`${inputClass} font-mono`}>
-                          {GST_RATES.map(rate => (
-                            <option key={rate} value={rate}>
-                              {rate}%
-                            </option>
-                          ))}
-                        </select>
+                      <Field label="GST % (from SKU master)">
+                        <input readOnly disabled value={`${line.gst_pct}%`} className={`${inputClass} font-mono bg-[#f3f1ea] text-[#667078]`} />
                       </Field>
                     </div>
                     <dl className="flex flex-wrap justify-end gap-x-6 gap-y-1 font-mono text-sm">
@@ -848,8 +786,16 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
               </label>
             </Section>
 
-            <Section title="Payment & delivery">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <Section
+              title="Annexure, Payment & delivery"
+              action={
+                <label className="flex items-center gap-2 text-sm font-semibold">
+                  <input type="checkbox" checked={draft.annexure_enabled} onChange={event => update({ annexure_enabled: event.target.checked })} className="size-4" />
+                  Print annexure
+                </label>
+              }
+            >
+              <div className="grid gap-4 border-b border-[#ece8dc] pb-5 sm:grid-cols-2">
                 <Field label="Payment terms">
                   <select
                     value={draft.payment_basis}
@@ -865,35 +811,25 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
                 </Field>
                 {['DELIVERY', 'PO_DATE', 'INVOICE_DATE', 'ADVANCE_BALANCE'].includes(draft.payment_basis) && (
                   <Field label="Credit days">
-                    <input type="number" min={0} max={365} required value={draft.payment_days} onChange={event => update({ payment_days: event.target.value })} className={inputClass} />
+                    <input type="number" min={0} max={365} value={draft.payment_days} onChange={event => update({ payment_days: event.target.value })} className={inputClass} />
                   </Field>
                 )}
                 {draft.payment_basis === 'ADVANCE_BALANCE' && (
                   <Field label="Advance %">
-                    <input type="number" min={1} max={99} required value={draft.advance_pct} onChange={event => update({ advance_pct: event.target.value })} className={inputClass} />
+                    <input type="number" min={1} max={99} value={draft.advance_pct} onChange={event => update({ advance_pct: event.target.value })} className={inputClass} />
                   </Field>
                 )}
                 {draft.payment_basis === 'CUSTOM' && (
                   <Field label="Custom terms" className="sm:col-span-2">
-                    <input required value={draft.payment_custom_text} onChange={event => update({ payment_custom_text: event.target.value })} className={inputClass} />
+                    <input value={draft.payment_custom_text} onChange={event => update({ payment_custom_text: event.target.value })} className={inputClass} />
                   </Field>
                 )}
                 <Field label="Delivery days">
-                  <input type="number" min={0} max={365} required value={draft.delivery_days} onChange={event => update({ delivery_days: event.target.value })} className={inputClass} />
+                  <input type="number" min={0} max={365} value={draft.delivery_days} onChange={event => update({ delivery_days: event.target.value })} className={inputClass} />
                 </Field>
                 <p className="rounded-lg bg-[#f6f4ee] px-3 py-2 text-sm leading-relaxed text-[#3b4654] sm:col-span-2">{termsText}</p>
               </div>
-            </Section>
 
-            <Section
-              title="Annexure"
-              action={
-                <label className="flex items-center gap-2 text-sm font-semibold">
-                  <input type="checkbox" checked={draft.annexure_enabled} onChange={event => update({ annexure_enabled: event.target.checked })} className="size-4" />
-                  Print annexure
-                </label>
-              }
-            >
               {draft.annexure_enabled && (
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-end gap-3">
@@ -999,10 +935,6 @@ export function PoForm({ source, mode }: { source: PoDetail | null; mode: 'new' 
             </span>
           </div>
         </form>
-
-        <aside aria-label="Live PO preview" className={`xl:sticky xl:top-6 xl:block xl:self-start ${view === 'preview' ? 'block' : 'hidden'}`}>
-          {preview}
-        </aside>
       </div>
 
       <SkuPicker

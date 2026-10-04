@@ -1,7 +1,6 @@
 import type { Company } from '@/lib/companies'
 import {
   amountInWords,
-  deliveryPeriodText,
   formatDate,
   formatInr,
   type computeTotals,
@@ -138,10 +137,11 @@ export function PoDocument({ data }: { data: PoDocumentData }) {
         </AddressBlock>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <p className="font-semibold">Subject: {data.subject || 'Purchase Order'}</p>
-        {data.intro_text && <p className="text-pretty whitespace-pre-line text-[#3b4654]">{data.intro_text}</p>}
-      </div>
+      {data.intro_text && (
+        <div className="flex flex-col gap-1">
+          <p className="text-pretty whitespace-pre-line text-[#3b4654]">{data.intro_text}</p>
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-left">
@@ -151,16 +151,17 @@ export function PoDocument({ data }: { data: PoDocumentData }) {
               <th scope="col" className="px-2 py-1.5">Item</th>
               <th scope="col" className="px-2 py-1.5">HSN</th>
               <th scope="col" className="px-2 py-1.5 text-right">Qty</th>
-              <th scope="col" className="px-2 py-1.5 text-right">Rate</th>
-              <th scope="col" className="px-2 py-1.5 text-right">Taxable</th>
-              <th scope="col" className="px-2 py-1.5 text-right">GST</th>
+              <th scope="col" className="px-2 py-1.5 text-right">Unit/Rate</th>
+              <th scope="col" className="px-2 py-1.5 text-right">Taxable Amount</th>
+              <th scope="col" className="px-2 py-1.5 text-right">GST%</th>
+              <th scope="col" className="px-2 py-1.5 text-right">GST Amount</th>
               <th scope="col" className="px-2 py-1.5 text-right">Total</th>
             </tr>
           </thead>
           <tbody>
             {data.lines.length === 0 && (
               <tr>
-                <td colSpan={8} className="border-b border-[#dedbd2] px-2 py-4 text-center text-[#667078]">
+                <td colSpan={9} className="border-b border-[#dedbd2] px-2 py-4 text-center text-[#667078]">
                   Add a line item
                 </td>
               </tr>
@@ -169,23 +170,18 @@ export function PoDocument({ data }: { data: PoDocumentData }) {
               <tr key={`${line.sku_code}-${index}`} className="border-b border-[#dedbd2] align-top">
                 <td className="px-2 py-1.5 font-mono">{index + 1}</td>
                 <td className="px-2 py-1.5">
-                  <span className="font-semibold">{line.item_name || '—'}</span>
                   <span className="block font-mono text-[10px] text-[#667078]">{line.sku_code}</span>
-                  {line.description && <span className="block text-[#3b4654]">{line.description}</span>}
+                  <span className="font-semibold">{line.description || line.item_name || '—'}</span>
                 </td>
                 <td className="px-2 py-1.5 font-mono">{line.hsn}</td>
+                <td className="px-2 py-1.5 text-right font-mono whitespace-nowrap">{qtyFormat.format(line.qty)}</td>
                 <td className="px-2 py-1.5 text-right font-mono whitespace-nowrap">
-                  {qtyFormat.format(line.qty)} {line.unit}
-                </td>
-                <td className="px-2 py-1.5 text-right font-mono whitespace-nowrap">
-                  {formatInr(line.rate)}
+                  {line.unit} / {formatInr(line.rate)}
                   {line.discount_pct > 0 && <span className="block text-[10px] text-[#667078]">−{line.discount_pct}%</span>}
                 </td>
                 <td className="px-2 py-1.5 text-right font-mono">{formatInr(line.taxable)}</td>
-                <td className="px-2 py-1.5 text-right font-mono whitespace-nowrap">
-                  {formatInr(line.gst_amount)}
-                  <span className="block text-[10px] text-[#667078]">{line.gst_pct}%</span>
-                </td>
+                <td className="px-2 py-1.5 text-right font-mono">{line.gst_pct}%</td>
+                <td className="px-2 py-1.5 text-right font-mono">{formatInr(line.gst_amount)}</td>
                 <td className="px-2 py-1.5 text-right font-mono font-semibold">{formatInr(line.line_total)}</td>
               </tr>
             ))}
@@ -231,13 +227,6 @@ export function PoDocument({ data }: { data: PoDocumentData }) {
         </dl>
       </div>
 
-      <dl className="grid gap-x-4 gap-y-1 border-t border-[#dedbd2] pt-3 sm:grid-cols-[auto_1fr]">
-        <dt className="font-semibold">Payment terms</dt>
-        <dd className="text-[#3b4654]">{data.payment_terms_text}</dd>
-        <dt className="font-semibold">Delivery</dt>
-        <dd className="text-[#3b4654]">{deliveryPeriodText(data.delivery_days)} from the date of this PO</dd>
-      </dl>
-
       {data.annexure_enabled && data.annexure_terms.length > 0 && (
         <section aria-label={data.annexure_heading} className="flex flex-col gap-1.5">
           <h3 className="font-heading text-sm font-bold underline underline-offset-4">{data.annexure_heading}</h3>
@@ -249,13 +238,17 @@ export function PoDocument({ data }: { data: PoDocumentData }) {
         </section>
       )}
 
-      <footer className="mt-4 flex justify-end">
-        <div className="flex flex-col items-end gap-8 text-right">
+      <footer className="mt-4 flex items-end justify-between gap-4 border-t border-[#dedbd2] pt-4">
+        <div className="hidden flex-1 sm:block" aria-hidden="true" />
+        <div className="flex-1 text-center text-[#3b4654]">
+          <span className="block text-[10px] font-bold tracking-widest text-[#667078] uppercase">Registered address &amp; contact</span>
+          {companyAddress && <p className="text-pretty">{companyAddress}</p>}
+          {(company?.phone || company?.email) && (
+            <p className="font-mono">{[company?.phone, company?.email].filter(Boolean).join(' · ')}</p>
+          )}
+        </div>
+        <div className="flex flex-1 justify-end">
           <p className="font-semibold">For {company?.legal_name ?? '—'}</p>
-          <p>
-            <span className="block font-semibold">{company?.signatory_name ?? 'Authorised signatory'}</span>
-            <span className="text-[#667078]">{company?.signatory_designation ?? 'Authorised signatory'}</span>
-          </p>
         </div>
       </footer>
     </article>

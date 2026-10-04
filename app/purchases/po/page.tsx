@@ -209,18 +209,15 @@ export default function PurchaseOrdersPage() {
                 <td className="px-4 py-3 font-mono text-xs">{row.pi_number ?? '—'}</td>
                 <td className="px-4 py-3">
                   <span className="flex justify-end gap-3 text-sm font-semibold whitespace-nowrap">
-                    <Link href={`/purchases/po/${row.id}`} className="underline-offset-4 hover:underline">View</Link>
                     {canWrite && row.status === 'CREATED' && (
                       <Link href={`/purchases/po/${row.id}/edit`} className="underline-offset-4 hover:underline">Edit</Link>
-                    )}
-                    {canWrite && (
-                      <Link href={`/purchases/po/new?from=${row.id}`} className="underline-offset-4 hover:underline">Duplicate</Link>
                     )}
                     {canWrite && row.status === 'CREATED' && (
                       <button type="button" onClick={() => setCancelling({ id: row.id, number: row.number })} className="font-semibold text-[#a33b2b] underline-offset-4 hover:underline">
                         Cancel
                       </button>
                     )}
+                    <Link href={`/po-print/${row.id}`} target="_blank" rel="noopener noreferrer" className="underline-offset-4 hover:underline">PDF</Link>
                   </span>
                 </td>
               </tr>
