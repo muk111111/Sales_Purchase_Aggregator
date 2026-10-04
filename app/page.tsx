@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { FormEvent, Suspense, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Download, Pencil, Plus, Search, X } from 'lucide-react'
@@ -48,6 +48,14 @@ const isSection = (value: string | null): value is Section =>
   )
 
 export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <PageContent />
+    </Suspense>
+  )
+}
+
+function PageContent() {
   const searchParams = useSearchParams()
   const [section, setSection] = useState<Section>(() => {
     const fromUrl = searchParams.get('section')
