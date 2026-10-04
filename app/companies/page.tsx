@@ -38,7 +38,6 @@ export default function CompaniesPage() {
 
       <ul className="flex flex-col gap-3">
         {companies?.map(company => {
-          const blockers = company.company_document_blockers ?? []
           const missing = (company.company_missing_fields ?? []).filter(field => !['gstin', 'pan', 'reg_address'].includes(field))
           return (
             <li key={company.id}>
@@ -63,16 +62,11 @@ export default function CompaniesPage() {
                     {company.code} · {company.entity_type ?? 'Add entity type'} · GSTIN {company.gstin ?? '—'}
                   </span>
                 </span>
-                <span className="flex flex-col gap-1 text-xs sm:max-w-xs sm:text-right">
-                  {blockers.length > 0 ? (
-                    <span className="font-semibold text-[#a33b2b]">Can&apos;t issue PO / PI / SI — add {blockers.join(', ')}</span>
-                  ) : (
-                    <span className="font-semibold text-[#23714a]">Ready for documents</span>
-                  )}
-                  {missing.length > 0 && (
-                    <span className="text-[#667078]">Also missing: {missing.map(field => FIELD_LABELS[field] ?? field).join(', ')}</span>
-                  )}
-                </span>
+                {missing.length > 0 && (
+                  <span className="flex flex-col gap-1 text-xs text-[#667078] sm:max-w-xs sm:text-right">
+                    Missing: {missing.map(field => FIELD_LABELS[field] ?? field).join(', ')}
+                  </span>
+                )}
               </Link>
             </li>
           )

@@ -44,7 +44,6 @@ export default function EditCompanyPage({ params }: { params: Promise<{ id: stri
   }
   if (!company) return <p className="text-sm text-[#667078]">Loading company…</p>
 
-  const blockers = company.company_document_blockers ?? []
   const missing = company.company_missing_fields ?? []
 
   return (
@@ -73,11 +72,6 @@ export default function EditCompanyPage({ params }: { params: Promise<{ id: stri
         )}
       </div>
 
-      {blockers.length > 0 && (
-        <div role="status" className="rounded-xl border border-[#f0c4bd] bg-[#fdf0ee] px-4 py-3 text-sm leading-relaxed text-[#a33b2b]">
-          <strong>POs, purchase invoices and sales invoices are blocked</strong> until you add: {blockers.join(', ')}.
-        </div>
-      )}
       {missing.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-[#667078]">Incomplete:</span>

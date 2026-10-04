@@ -38,7 +38,8 @@ begin
     'missing fields reported as warnings';
   raise notice 'PASS Active company saved without GSTIN/PAN/address';
 
-  -- New company with GSTIN but no bank account: PO / PI / SI blocked, SO / CN allowed
+  -- New company with GSTIN but no bank account: nothing but legal_name is mandatory,
+  -- so PO / PI / SI are never blocked by missing GSTIN, PAN, address, state code or bank account.
   insert into public.companies (code, legal_name, gst_type, gstin, state_name, reg_address, fy, status)
   values ('ZZTEST', 'Zeta Quartz Traders', 'Regular', '24ABCDE1234F1Z5', 'Gujarat', '1 Test Road, Surat', '2026-27', 'Active')
   returning id into v_company;
@@ -46,21 +47,13 @@ begin
   assert (select count(*) from public.document_series where company_id = v_company and next_number = 91010) = 5,
     'five series at 91010';
 
-  begin
-    perform public.next_document_number(v_company, 'PO');
-    raise exception 'PO without bank account should be blocked';
-  exception when check_violation then
-    get stacked diagnostics v_msg = message_text;
-    assert v_msg = 'Cannot create PO for Zeta Quartz Traders: add default bank account', v_msg;
-  end;
-  begin
-    perform public.next_document_number(v_bare, 'SI');
-    raise exception 'SI for bare company should be blocked';
-  exception when check_violation then
-    get stacked diagnostics v_msg = message_text;
-    assert v_msg like 'Cannot create SI for Bare Minimum Co: add GSTIN, PAN, registered address, state code, default bank account', v_msg;
-  end;
-  raise notice 'PASS PO/PI/SI blocked with message: %', v_msg;
+  assert cardinality((select public.company_document_blockers(c) from public.companies c where id = v_company)) = 0,
+    'no document blockers even without a bank account';
+  assert cardinality((select public.company_document_blockers(c) from public.companies c where id = v_bare)) = 0,
+    'no document blockers for a bare company missing GSTIN/PAN/address/state';
+
+  perform public.next_document_number(v_bare, 'SI');
+  raise notice 'PASS SI allowed for bare company with only legal_name set';
 
   insert into public.company_bank_accounts (company_id, account_name, bank_name, account_no, ifsc)
   values (v_company, 'Zeta Quartz Traders', 'HDFC Bank', '50100123456789', 'hdfc0001234');
