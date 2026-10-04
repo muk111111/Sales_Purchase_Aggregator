@@ -478,6 +478,38 @@ function LeadsView({ leads, loading, error, onNew, onEdit }: { leads: Lead[]; lo
   return <><div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-[#667078]">Every enquiry from first call to won or lost.</p></div><button onClick={onNew} className="flex min-h-11 items-center gap-2 rounded-lg bg-[#f2a541] px-4 text-sm font-bold text-[#0e1b2c]"><Plus size={17} /> New lead</button></div><div className="mb-6 grid gap-4 sm:grid-cols-3"><Kpi label="Open leads" value={String(open.length)} /><Kpi label="Pipeline value" value={money(pipeline)} /><Kpi label="Expected margin" value={money(margin)} /></div><div className="mb-5 rounded-2xl border border-[#e0ddd5] bg-white p-4"><div className="grid gap-3 md:grid-cols-[1.5fr_1fr_1fr_auto]"><label className="relative"><span className="sr-only">Search leads</span><Search className="absolute left-3 top-3 text-[#8b9295]" size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search customer, product, owner" className="h-11 w-full rounded-lg border border-[#dedbd2] pl-10 pr-3 text-sm outline-none focus:border-[#f2a541]" /></label><select value={stage} onChange={event => setStage(event.target.value)} aria-label="Filter by stage" className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option>{stages.map(item => <option key={item}>{item}</option>)}</select><select value={source} onChange={event => setSource(event.target.value)} aria-label="Filter by source" className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option>{['Referral', 'Partner network', 'Website', 'Cold call', 'Existing customer', 'Other'].map(item => <option key={item}>{item}</option>)}</select><button onClick={() => { setSearch(''); setStage('All'); setSource('All') }} className="h-11 rounded-lg border border-[#dedbd2] px-4 text-sm font-semibold hover:bg-[#f4f2ed]">Clear</button></div></div>{error && <div className="mb-4 rounded-xl border border-[#e8c2b9] bg-[#fff1ed] p-4 text-sm text-[#b23a22]">{error}</div>}{loading ? <div className="rounded-2xl bg-white p-8 text-sm text-[#667078]">Loading leads...</div> : <div className="overflow-hidden rounded-2xl border border-[#e0ddd5] bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-[#faf9f6] text-xs uppercase tracking-[0.08em] text-[#667078]"><tr><th className="px-5 py-4">Customer</th><th className="px-5 py-4">Product</th><th className="px-5 py-4">Owner</th><th className="px-5 py-4">Stage</th><th className="px-5 py-4">Source</th><th className="px-5 py-4">Value</th><th className="px-5 py-4 text-right">Action</th></tr></thead><tbody className="divide-y divide-[#eeeae2]">{filtered.map(lead => <tr key={lead.id} className="hover:bg-[#fffdf8]"><td className="px-5 py-4"><div className="font-semibold">{lead.customer_name}</div><div className="mt-1 text-xs text-[#8b9295]">{lead.contact_person || lead.email || 'No contact details'}</div></td><td className="px-5 py-4">{lead.product}<div className="mt-1 text-xs text-[#8b9295]">{lead.qty} {lead.uom}</div></td><td className="px-5 py-4">{lead.partner_name || '—'}</td><td className="px-5 py-4"><span className="rounded-full bg-[#f4f2ed] px-2.5 py-1 text-xs font-semibold">{lead.stage}</span></td><td className="px-5 py-4 text-[#667078]">{lead.source}</td><td className="px-5 py-4 font-semibold">{money(Number(lead.qty) * Number(lead.target_rate))}</td><td className="px-5 py-4 text-right"><button onClick={() => onEdit(lead)} aria-label={`Edit ${lead.customer_name}`} className="inline-flex items-center gap-2 rounded-lg border border-[#dedbd2] px-3 py-2 text-xs font-bold hover:border-[#f2a541] hover:bg-[#fff8eb]"><Pencil size={14} /> Edit</button></td></tr>)}</tbody></table></div>{filtered.length === 0 && <div className="p-10 text-center text-sm text-[#667078]">No leads match these filters.</div>}</div>}</>
 }
 
+const SKU_CSV_COLUMNS = ['code','name','category','sub_category','business_line','brand','model','status','spec','size','gsm','colour','weight_kg','barcode','uom','pack_qty','purchase_uom','conversion','moq','hsn','gst_pct','cess_pct','std_purchase_rate','std_selling_rate','min_margin_pct','mrp','lead_time_days','opening_qty','opening_rate','opening_date','reorder_level','reorder_qty','location','notes']
+const SKU_CSV_REQUIRED = new Set(['code','name','category','business_line','uom','hsn'])
+const SKU_CSV_NUMERIC = new Set(['weight_kg','pack_qty','conversion','moq','gst_pct','cess_pct','std_purchase_rate','std_selling_rate','min_margin_pct','mrp','lead_time_days','opening_qty','opening_rate','reorder_level','reorder_qty'])
+
+function csvCell(value: unknown) {
+  if (value === null || value === undefined) return ''
+  const text = String(value)
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let inQuotes = false
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[index + 1] === '"') { cell += '"'; index++ } else inQuotes = false
+      } else cell += char
+    } else if (char === '"') inQuotes = true
+    else if (char === ',') { row.push(cell); cell = '' }
+    else if (char === '\n' || char === '\r') {
+      if (char === '\r' && text[index + 1] === '\n') index++
+      row.push(cell); rows.push(row); row = []; cell = ''
+    } else cell += char
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row) }
+  return rows
+}
+
 function SKUsView({ initialTab = 'skus', skus, loading, error, onRefresh, onNew, onEditSku, masters, canEditMasters, onAddMaster, onEditMaster, onImportResult }: { initialTab?: 'skus' | 'masters'; skus: SKU[]; loading: boolean; error: string; onRefresh: () => void; onNew: () => void; onEditSku?: (sku: SKU) => void; masters: SkuMasterValue[]; canEditMasters: boolean; onAddMaster: (type: SkuMasterType, value: string) => Promise<void>; onEditMaster: (id: string, value: string) => void; onImportResult: (message: string, importError?: string) => void }) {
   const [masterType, setMasterType] = useState<SkuMasterType>('Category')
   const [masterValue, setMasterValue] = useState('')
@@ -485,8 +517,70 @@ function SKUsView({ initialTab = 'skus', skus, loading, error, onRefresh, onNew,
   const [search, setSearch] = useState(''); const [status, setStatus] = useState('All'); const [category, setCategory] = useState('All')
   const categories = Array.from(new Set(skus.map(sku => sku.category))).sort()
   const filtered = skus.filter(sku => `${sku.code} ${sku.name} ${sku.brand || ''} ${sku.barcode || ''}`.toLowerCase().includes(search.toLowerCase()) && (status === 'All' || sku.status === status) && (category === 'All' || sku.category === category))
-  const exportSkus = () => { const columns = ['code*','name*','category*','sub_category','business_line*','brand','model','status*','spec','size','gsm','colour','weight_kg','barcode','uom*','pack_qty*','hsn*','gst_pct*','cess_pct*','std_purchase_rate','std_selling_rate','min_margin_pct*','mrp','opening_qty','opening_rate','opening_date','reorder_level','reorder_qty','location','notes']; const csv = columns.join(','); const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'sku-master.csv'; anchor.click(); URL.revokeObjectURL(url) }
-  const importSkus = async (event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file || !canEditMasters) return; const rows = (await file.text()).split(/\\r?\\n/).filter(Boolean); const columns = rows.shift()?.split(',').map(column => column.trim().replace(/^"|"$/g, '').replace(/\*$/, '')) ?? []; const numericColumns = new Set(['weight_kg','pack_qty','gst_pct','cess_pct','std_purchase_rate','std_selling_rate','min_margin_pct','mrp','opening_qty','opening_rate','reorder_level','reorder_qty']); const payload = rows.map(row => { const values = row.match(/("(?:""|[^"])*"|[^,]*)/g)?.slice(0, columns.length + 1) ?? []; return Object.fromEntries(columns.map((column, index) => { const value = (values[index] ?? '').replace(/^"|"$/g, '').replaceAll('""', '"'); return [column, value === '' ? null : numericColumns.has(column) ? Number(value) : value] })) }).filter(row => row.is_example !== 'YES' && row.code && row.name && row.category && row.business_line && row.uom && row.hsn); const { error: importError } = await createClient().from('skus').insert(payload); if (importError) onImportResult('', `Could not import SKUs: ${importError.message}`); else { onImportResult(`${payload.length} SKU${payload.length === 1 ? '' : 's'} imported successfully.`); onRefresh() } event.target.value = '' }
+  const exportSkus = () => {
+    const header = SKU_CSV_COLUMNS.map(column => SKU_CSV_REQUIRED.has(column) ? `${column}*` : column).join(',')
+    const body = skus.map(sku => SKU_CSV_COLUMNS.map(column => csvCell((sku as unknown as Record<string, unknown>)[column])).join(','))
+    const csv = '\uFEFF' + [header, ...body].join('\r\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `sku-master-${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(anchor); anchor.click(); anchor.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  const importSkus = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target
+    const file = input.files?.[0]
+    if (!file || !canEditMasters) return
+    try {
+      const [headerRow, ...dataRows] = parseCsv((await file.text()).replace(/^\uFEFF/, ''))
+      if (!headerRow) { onImportResult('', 'The CSV file is empty.'); return }
+      const columns = headerRow.map(column => column.trim().replace(/\*$/, '').trim().toLowerCase())
+      const missingRequired = [...SKU_CSV_REQUIRED].filter(column => !columns.includes(column))
+      if (missingRequired.length) { onImportResult('', `CSV is missing required column(s): ${missingRequired.join(', ')}`); return }
+      const problems: string[] = []
+      const records: Record<string, string | number>[] = []
+      dataRows.forEach((values, index) => {
+        if (values.every(value => value.trim() === '')) return
+        const rowNumber = index + 2
+        const record: Record<string, string | number> = {}
+        columns.forEach((column, columnIndex) => {
+          if (!SKU_CSV_COLUMNS.includes(column)) return
+          const value = (values[columnIndex] ?? '').trim()
+          if (value === '') return
+          if (SKU_CSV_NUMERIC.has(column)) {
+            const numeric = Number(value.replace(/,/g, ''))
+            if (Number.isNaN(numeric)) problems.push(`Row ${rowNumber}: ${column} "${value}" is not a number`)
+            else record[column] = numeric
+          } else record[column] = value
+        })
+        const missing = ['code', 'name', 'category', 'business_line', 'uom', 'hsn'].filter(column => record[column] === undefined)
+        if (missing.length) { problems.push(`Row ${rowNumber}: missing ${missing.join(', ')}`); return }
+        records.push(record)
+      })
+      if (problems.length) { onImportResult('', `Import stopped. Fix these rows and try again: ${problems.slice(0, 8).join('; ')}${problems.length > 8 ? ` (+${problems.length - 8} more)` : ''}`); return }
+      if (!records.length) { onImportResult('', 'No SKU rows found in the CSV.'); return }
+      const supabase = createClient()
+      const existingByCode = new Map(skus.map(sku => [sku.code.trim().toLowerCase(), sku.id]))
+      const toInsert = records.filter(record => !existingByCode.has(String(record.code).toLowerCase()))
+      const toUpdate = records.filter(record => existingByCode.has(String(record.code).toLowerCase()))
+      if (toInsert.length) {
+        const { error: insertError } = await supabase.from('skus').insert(toInsert, { defaultToNull: false })
+        if (insertError) { onImportResult('', `Could not import SKUs: ${insertError.message}`); return }
+      }
+      const updateErrors: string[] = []
+      for (const record of toUpdate) {
+        const id = existingByCode.get(String(record.code).toLowerCase())!
+        const { code: _code, ...changes } = record
+        const { error: updateError } = await supabase.from('skus').update({ ...changes, updated_at: new Date().toISOString() }).eq('id', id)
+        if (updateError) updateErrors.push(`${record.code}: ${updateError.message}`)
+      }
+      onRefresh()
+      if (updateErrors.length) onImportResult('', `Added ${toInsert.length}, updated ${toUpdate.length - updateErrors.length}. Failed: ${updateErrors.slice(0, 5).join('; ')}`)
+      else onImportResult(`Import complete: ${toInsert.length} SKU${toInsert.length === 1 ? '' : 's'} added, ${toUpdate.length} updated.`)
+    } catch (importError) {
+      onImportResult('', `Could not read the CSV file: ${importError instanceof Error ? importError.message : String(importError)}`)
+    } finally {
+      input.value = ''
+    }
+  }
   if (tab === 'masters') return <div><SkuMastersView masters={masters} canEdit={canEditMasters} type={masterType} onTypeChange={setMasterType} value={masterValue} onValueChange={setMasterValue} onAdd={onAddMaster} onEditMaster={onEditMaster} /></div>
   return <div><div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-[#667078]">Manage products, pricing, tax, and stock settings.</p></div><div className="flex flex-wrap gap-2"><button onClick={exportSkus} className="min-h-11 rounded-lg border border-[#dedbd2] bg-white px-4 text-sm font-semibold">Export CSV</button>{canEditMasters && <label className="flex min-h-11 cursor-pointer items-center rounded-lg border border-[#dedbd2] bg-white px-4 text-sm font-semibold">Import CSV<input type="file" accept=".csv,text/csv" onChange={importSkus} className="sr-only" /></label>}<button onClick={onNew} className="min-h-11 rounded-lg bg-[#f2a541] px-4 text-sm font-bold text-[#0e1b2c]">Create SKU</button></div></div><div className="mb-5 grid gap-3 rounded-2xl border border-[#e0ddd5] bg-white p-4 md:grid-cols-[1.5fr_1fr_1fr_auto]"><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search code, name, brand, barcode" className="h-11 rounded-lg border border-[#dedbd2] px-3 text-sm outline-none focus:border-[#f2a541]" /><select value={category} onChange={event => setCategory(event.target.value)} className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option>{categories.map(item => <option key={item}>{item}</option>)}</select><select value={status} onChange={event => setStatus(event.target.value)} className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option><option>Active</option><option>Discontinued</option></select><button onClick={() => { setSearch(''); setCategory('All'); setStatus('All'); onRefresh() }} className="h-11 rounded-lg border border-[#dedbd2] px-4 text-sm font-semibold">Refresh</button></div>{error && <div className="mb-4 rounded-xl border border-[#e8c2b9] bg-[#fff1ed] p-4 text-sm text-[#b23a22]">{error}</div>}<div className="overflow-hidden rounded-2xl border border-[#e0ddd5] bg-white"><div className="flex items-center justify-between border-b border-[#e0ddd5] px-5 py-4"><h2 className="font-heading text-lg font-bold">SKU Master</h2><span className="text-xs text-[#667078]">{filtered.length} of {skus.length}</span></div><div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[#faf9f6] text-xs uppercase tracking-[0.12em] text-[#8b9295]"><tr>{['Actions','Code','Name','Category','Business line','Brand / model','UOM','GST','Selling rate','Status'].map(label => <th key={label} className="px-5 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y divide-[#eeeae2]">{loading ? <tr><td colSpan={10} className="px-5 py-10 text-center text-[#667078]">Loading SKUs…</td></tr> : filtered.length === 0 ? <tr><td colSpan={10} className="px-5 py-10 text-center text-[#667078]">No SKUs found.</td></tr> : filtered.map(sku => <tr key={sku.id} className="hover:bg-[#fcfbf8]"><td className="px-4 py-3">{onEditSku && <button type="button" onClick={() => onEditSku(sku)} className="font-semibold text-[#9b5e00] hover:underline">Edit</button>}</td><td className="px-5 py-4 font-semibold">{sku.code}</td><td className="px-5 py-4 font-semibold">{sku.name}</td><td className="px-5 py-4 text-[#667078]">{sku.category}</td><td className="px-5 py-4 text-[#667078]">{sku.business_line}</td><td className="px-5 py-4 text-[#667078]">{[sku.brand, sku.model].filter(Boolean).join(' / ') || '—'}</td><td className="px-5 py-4">{sku.uom}</td><td className="px-5 py-4">{sku.gst_pct}%</td><td className="px-5 py-4">{sku.std_selling_rate == null ? '—' : money(Number(sku.std_selling_rate))}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sku.status === 'Active' ? 'bg-[#eaf5ee] text-[#23714a]' : 'bg-[#f1f0ed] text-[#8b9295]'}`}>{sku.status}</span></td></tr>)}</tbody></table></div></div></div>
   return <div><div className="mb-7 flex flex-wrap items-end justify-between gap-4"><p className="text-sm text-[#667078]">Manage products, pricing, tax, and stock settings.</p><button onClick={onNew} className="min-h-11 rounded-lg bg-[#f2a541] px-4 text-sm font-bold text-[#0e1b2c]">Create SKU</button></div><div className="mb-5 grid gap-3 rounded-2xl border border-[#e0ddd5] bg-white p-4 md:grid-cols-[1.5fr_1fr_1fr_auto]"><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search code, name, brand, barcode" className="h-11 rounded-lg border border-[#dedbd2] px-3 text-sm outline-none focus:border-[#f2a541]" /><select value={category} onChange={event => setCategory(event.target.value)} className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option>{categories.map(item => <option key={item}>{item}</option>)}</select><select value={status} onChange={event => setStatus(event.target.value)} className="h-11 rounded-lg border border-[#dedbd2] bg-white px-3 text-sm"><option>All</option><option>Active</option><option>Discontinued</option></select><button onClick={() => { setSearch(''); setCategory('All'); setStatus('All'); onRefresh() }} className="h-11 rounded-lg border border-[#dedbd2] px-4 text-sm font-semibold">Refresh</button></div>{error && <div className="mb-4 rounded-xl border border-[#e8c2b9] bg-[#fff1ed] p-4 text-sm text-[#b23a22]">{error}</div>}<div className="overflow-hidden rounded-2xl border border-[#e0ddd5] bg-white"><div className="flex items-center justify-between border-b border-[#e0ddd5] px-5 py-4"><h2 className="font-heading text-lg font-bold">SKU Master</h2><span className="text-xs text-[#667078]">{filtered.length} of {skus.length}</span></div><div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-[#faf9f6] text-xs uppercase tracking-[0.12em] text-[#8b9295]"><tr>{['Actions','Code','Name','Category','Business line','Brand / model','UOM','GST','Selling rate','Status'].map(label => <th key={label} className="px-5 py-3 font-semibold">{label}</th>)}</tr></thead><tbody className="divide-y divide-[#eeeae2]">{loading ? <tr><td colSpan={10} className="px-5 py-10 text-center text-[#667078]">Loading SKUs…</td></tr> : filtered.length === 0 ? <tr><td colSpan={10} className="px-5 py-10 text-center text-[#667078]">No SKUs found.</td></tr> : filtered.map(sku => <tr key={sku.id} className="hover:bg-[#fcfbf8]"><td className="px-4 py-3">{onEditSku && <button type="button" onClick={() => onEditSku(sku)} className="font-semibold text-[#9b5e00] hover:underline">Edit</button>}</td><td className="px-5 py-4 font-semibold">{sku.code}</td><td className="px-5 py-4 font-semibold">{sku.name}</td><td className="px-5 py-4 text-[#667078]">{sku.category}</td><td className="px-5 py-4 text-[#667078]">{sku.business_line}</td><td className="px-5 py-4 text-[#667078]">{[sku.brand, sku.model].filter(Boolean).join(' / ') || '—'}</td><td className="px-5 py-4">{sku.uom}</td><td className="px-5 py-4">{sku.gst_pct}%</td><td className="px-5 py-4">{sku.std_selling_rate == null ? '—' : money(Number(sku.std_selling_rate))}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sku.status === 'Active' ? 'bg-[#eaf5ee] text-[#23714a]' : 'bg-[#f1f0ed] text-[#8b9295]'}`}>{sku.status}</span></td></tr>)}</tbody></table></div></div></div>
