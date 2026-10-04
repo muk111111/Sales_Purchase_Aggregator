@@ -13,7 +13,7 @@ as $$
     case when not exists (
       select 1 from public.company_bank_accounts b
       where b.company_id = c.id and b.is_default
-    ) then 'default_bank_account' end
+    ) then 'a default bank account' end
   ], null);
 $$;
 
