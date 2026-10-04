@@ -353,7 +353,7 @@ export function defaultAnnexureTerms(deliveryDays: number, termsText: string) {
   ]
 }
 
-export const hsnLooksValid = (hsn: string) => /^(\d{4}|\d{6}|\d{8})$/.test(hsn)
+export const hsnLooksValid = (hsn: string) => /^\d{4,8}$/.test(hsn)
 
 const inr = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const formatInr = (value: number) => inr.format(value)
