@@ -19,12 +19,13 @@ export async function POST(request: NextRequest) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
   const role = typeof body.role === 'string' ? body.role.trim() : ''
+  const jobType = body.job_type === 'Gigs Job' ? 'Gigs Job' : 'Fulltime'
   if (!fullName || !email || password.length < 8 || !role) return NextResponse.json({ error: 'Enter a name, email, role, and password of at least 8 characters.' }, { status: 400 })
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
   if (createError || !created.user) return NextResponse.json({ error: createError?.message || 'Could not create user.' }, { status: 400 })
 
-  const { error: employeeError } = await admin.from('employees').insert({ id: created.user.id, full_name: fullName, email, role, is_active: true })
+  const { error: employeeError } = await admin.from('employees').insert({ id: created.user.id, full_name: fullName, email, role, job_type: jobType, is_active: true })
   if (employeeError) {
     await admin.auth.admin.deleteUser(created.user.id)
     return NextResponse.json({ error: employeeError.message }, { status: 400 })
